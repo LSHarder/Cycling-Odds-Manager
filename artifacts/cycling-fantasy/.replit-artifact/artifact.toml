@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Cycling Fantasy Manager"
+version = "1.0.0"
+id = "artifacts/cycling-fantasy"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25561
+
+[services.development]
+run = "pnpm --filter @workspace/cycling-fantasy run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cycling-fantasy", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/cycling-fantasy/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25561"
+BASE_PATH = "/"

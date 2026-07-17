@@ -1,22 +1,35 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Cycling Fantasy Manager API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: Auth
+    description: Browser authentication endpoints
+  - name: riders
+    description: Rider operations
+  - name: stages
+    description: Stage operations
+  - name: team
+    description: User team management
+  - name: leaderboard
+    description: Global leaderboard
+  - name: points
+    description: Points and scoring
+  - name: admin
+    description: Admin operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +37,496 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/user:
+    get:
+      tags: [Auth]
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Auth status resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserEnvelope"
+
+  /login:
+    get:
+      tags: [Auth]
+      operationId: beginBrowserLogin
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC authorization endpoint.
+
+  /callback:
+    get:
+      tags: [Auth]
+      operationId: handleBrowserLoginCallback
+      summary: Complete the browser OIDC login flow
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: iss
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect on success or failure.
+
+  /logout:
+    get:
+      tags: [Auth]
+      operationId: logoutBrowserSession
+      summary: Clear the session and begin OIDC logout
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+            default: /
+      responses:
+        "302":
+          description: Redirect to OIDC logout.
+
+  /mobile-auth/token-exchange:
+    post:
+      tags: [Auth]
+      operationId: exchangeMobileAuthorizationCode
+      summary: Exchange a mobile OIDC code for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileTokenExchangeRequest"
+      responses:
+        "200":
+          description: Session created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileTokenExchangeSuccess"
+        "400":
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Token did not contain usable claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Token exchange failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /mobile-auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutMobileSession
+      summary: Delete a mobile session token
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+      responses:
+        "200":
+          description: Logout processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutSuccess"
+
+  # Profile
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [team]
+      summary: Get the current user's profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Not authenticated
+    put:
+      operationId: updateProfile
+      tags: [team]
+      summary: Update the current user's team name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Not authenticated
+
+  # Riders
+  /riders:
+    get:
+      operationId: listRiders
+      tags: [riders]
+      summary: List all TDF riders
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: team
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of riders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rider"
+
+  /riders/{id}:
+    get:
+      operationId: getRider
+      tags: [riders]
+      summary: Get a single rider by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rider detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rider"
+        "404":
+          description: Rider not found
+
+  # Stages
+  /stages:
+    get:
+      operationId: listStages
+      tags: [stages]
+      summary: List all TDF stages
+      responses:
+        "200":
+          description: List of stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Stage"
+
+  /stages/current:
+    get:
+      operationId: getCurrentStage
+      tags: [stages]
+      summary: Get the current or next upcoming stage
+      responses:
+        "200":
+          description: Current stage info with transfer window status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentStageResponse"
+        "404":
+          description: No active stage found
+
+  /stages/{id}:
+    get:
+      operationId: getStage
+      tags: [stages]
+      summary: Get stage details including results if completed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stage detail with results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StageDetail"
+        "404":
+          description: Stage not found
+
+  # Team
+  /team:
+    get:
+      operationId: getMyTeam
+      tags: [team]
+      summary: Get my current fantasy team
+      responses:
+        "200":
+          description: Current team selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyTeam"
+        "401":
+          description: Not authenticated
+    put:
+      operationId: updateMyTeam
+      tags: [team]
+      summary: Update my team selection (transfer window must be open)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamUpdate"
+      responses:
+        "200":
+          description: Updated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyTeam"
+        "400":
+          description: Invalid selection or transfer window closed
+        "401":
+          description: Not authenticated
+
+  # Leaderboard
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [leaderboard]
+      summary: Get global leaderboard
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Global leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardResponse"
+
+  # Points
+  /points/me:
+    get:
+      operationId: getMyPoints
+      tags: [points]
+      summary: Get my total points and per-stage breakdown
+      responses:
+        "200":
+          description: My points summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyPointsSummary"
+        "401":
+          description: Not authenticated
+
+  /points/stage/{stageId}:
+    get:
+      operationId: getStagePoints
+      tags: [points]
+      summary: Get my detailed points breakdown for a specific stage
+      parameters:
+        - name: stageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stage points detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StagePointsDetail"
+        "401":
+          description: Not authenticated
+        "404":
+          description: Stage not found
+
+  # Admin
+  /admin/stages:
+    get:
+      operationId: adminListStages
+      tags: [admin]
+      summary: List all stages for admin management
+      responses:
+        "200":
+          description: Admin stage list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminStage"
+        "403":
+          description: Forbidden
+
+  /admin/stages/{id}/process:
+    post:
+      operationId: adminProcessStage
+      tags: [admin]
+      summary: Scrape stage results and calculate points
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stage processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessStageResult"
+        "400":
+          description: Stage already processed or not completed
+        "403":
+          description: Forbidden
+
+  /admin/stages/{id}:
+    put:
+      operationId: adminUpdateStage
+      tags: [admin]
+      summary: Update stage details (date, deadline, status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminStageUpdate"
+      responses:
+        "200":
+          description: Updated stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStage"
+        "403":
+          description: Forbidden
+
+  /admin/riders/{id}:
+    put:
+      operationId: adminUpdateRider
+      tags: [admin]
+      summary: Update rider odds or status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiderUpdate"
+      responses:
+        "200":
+          description: Updated rider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rider"
+        "403":
+          description: Forbidden
+
+  /admin/sync:
+    post:
+      operationId: adminSyncRiders
+      tags: [admin]
+      summary: Sync rider data from ProCyclingStats
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+        "403":
+          description: Forbidden
+
 components:
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      schema:
+        type: string
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +536,467 @@ components:
       required:
         - status
 
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        profileImageUrl:
+          type: ["string", "null"]
+
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+
+    MobileTokenExchangeRequest:
+      type: object
+      required: [code, code_verifier, redirect_uri, state]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        code_verifier:
+          type: string
+          minLength: 1
+        redirect_uri:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+        nonce:
+          type: string
+          minLength: 1
+
+    MobileTokenExchangeSuccess:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    LogoutSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    UserProfile:
+      type: object
+      required: [id, replitId, email, firstName, teamName, isAdmin, createdAt]
+      properties:
+        id:
+          type: integer
+        replitId:
+          type: string
+        email:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        teamName:
+          type: ["string", "null"]
+        profileImageUrl:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ProfileUpdate:
+      type: object
+      required: [teamName]
+      properties:
+        teamName:
+          type: string
+          minLength: 1
+          maxLength: 50
+
+    Rider:
+      type: object
+      required: [id, name, proTeam, nationality, oddsDecimal, oddsLabel, isActive, currentJerseys, dnf]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        proTeam:
+          type: string
+        nationality:
+          type: string
+        oddsDecimal:
+          type: number
+        oddsLabel:
+          type: string
+          description: Human-readable odds e.g. "1/4" or "10/1"
+        photoUrl:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        dnf:
+          type: boolean
+        currentJerseys:
+          type: array
+          items:
+            type: string
+            enum: [yellow, green, polkadot, white]
+        pcsSlug:
+          type: ["string", "null"]
+          description: ProCyclingStats rider slug for scraping
+
+    RiderUpdate:
+      type: object
+      properties:
+        oddsDecimal:
+          type: number
+        oddsLabel:
+          type: string
+        isActive:
+          type: boolean
+        dnf:
+          type: boolean
+
+    Stage:
+      type: object
+      required: [id, stageNumber, name, startCity, endCity, date, stageType, status, transferDeadline]
+      properties:
+        id:
+          type: integer
+        stageNumber:
+          type: integer
+        name:
+          type: string
+        startCity:
+          type: string
+        endCity:
+          type: string
+        date:
+          type: string
+          format: date
+        stageType:
+          type: string
+          enum: [flat, hilly, mountain, time_trial, rest]
+        status:
+          type: string
+          enum: [upcoming, transfer_closed, live, completed]
+        transferDeadline:
+          type: ["string", "null"]
+          format: date-time
+        pcsUrl:
+          type: ["string", "null"]
+
+    CurrentStageResponse:
+      type: object
+      required: [stage, transferWindowOpen, minutesUntilClose]
+      properties:
+        stage:
+          $ref: "#/components/schemas/Stage"
+        transferWindowOpen:
+          type: boolean
+        minutesUntilClose:
+          type: ["integer", "null"]
+
+    StageResult:
+      type: object
+      required: [id, stageId, riderId, riderName, proTeam, position, dnf, fantasyPoints]
+      properties:
+        id:
+          type: integer
+        stageId:
+          type: integer
+        riderId:
+          type: integer
+        riderName:
+          type: string
+        proTeam:
+          type: string
+        position:
+          type: ["integer", "null"]
+        dnf:
+          type: boolean
+        fantasyPoints:
+          type: number
+        pointsBreakdown:
+          type: object
+          properties:
+            stage:
+              type: number
+            jerseys:
+              type: number
+            kom:
+              type: number
+            sprint:
+              type: number
+            combative:
+              type: number
+            penalty:
+              type: number
+          required: [stage, jerseys, kom, sprint, combative, penalty]
+
+    StageDetail:
+      type: object
+      required: [stage, results]
+      properties:
+        stage:
+          $ref: "#/components/schemas/Stage"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageResult"
+
+    RiderSummary:
+      type: object
+      required: [id, name, proTeam, oddsDecimal, oddsLabel, currentJerseys, dnf]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        proTeam:
+          type: string
+        oddsDecimal:
+          type: number
+        oddsLabel:
+          type: string
+        photoUrl:
+          type: ["string", "null"]
+        currentJerseys:
+          type: array
+          items:
+            type: string
+        dnf:
+          type: boolean
+
+    MyTeam:
+      type: object
+      required: [riders, captainRiderId, transferWindowOpen]
+      properties:
+        riders:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiderSummary"
+        captainRiderId:
+          type: ["integer", "null"]
+        transferWindowOpen:
+          type: boolean
+        totalPoints:
+          type: number
+
+    TeamUpdate:
+      type: object
+      required: [riderIds, captainRiderId]
+      properties:
+        riderIds:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+          maxItems: 8
+        captainRiderId:
+          type: integer
+
+    LeaderboardEntry:
+      type: object
+      required: [rank, userId, teamName, totalPoints]
+      properties:
+        rank:
+          type: integer
+        userId:
+          type: integer
+        teamName:
+          type: string
+        totalPoints:
+          type: number
+        firstName:
+          type: ["string", "null"]
+        profileImageUrl:
+          type: ["string", "null"]
+        myRank:
+          type: boolean
+
+    LeaderboardResponse:
+      type: object
+      required: [entries, total, myEntry]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardEntry"
+        total:
+          type: integer
+        myEntry:
+          oneOf:
+            - $ref: "#/components/schemas/LeaderboardEntry"
+            - type: "null"
+
+    StagePointsEntry:
+      type: object
+      required: [stageId, stageNumber, stageName, riderName, isCaptain, basePoints, multiplier, totalPoints, breakdown]
+      properties:
+        stageId:
+          type: integer
+        stageNumber:
+          type: integer
+        stageName:
+          type: string
+        riderId:
+          type: integer
+        riderName:
+          type: string
+        isCaptain:
+          type: boolean
+        oddsDecimal:
+          type: number
+        basePoints:
+          type: number
+        multiplier:
+          type: number
+        totalPoints:
+          type: number
+        breakdown:
+          type: object
+          properties:
+            stage:
+              type: number
+            jerseys:
+              type: number
+            kom:
+              type: number
+            sprint:
+              type: number
+            combative:
+              type: number
+            penalty:
+              type: number
+          required: [stage, jerseys, kom, sprint, combative, penalty]
+
+    MyPointsSummary:
+      type: object
+      required: [totalPoints, stageBreakdown, teamName]
+      properties:
+        totalPoints:
+          type: number
+        teamName:
+          type: ["string", "null"]
+        stageBreakdown:
+          type: array
+          items:
+            type: object
+            required: [stageId, stageNumber, stageName, points]
+            properties:
+              stageId:
+                type: integer
+              stageNumber:
+                type: integer
+              stageName:
+                type: string
+              points:
+                type: number
+
+    StagePointsDetail:
+      type: object
+      required: [stageId, stageNumber, stageName, totalPoints, riderPoints]
+      properties:
+        stageId:
+          type: integer
+        stageNumber:
+          type: integer
+        stageName:
+          type: string
+        totalPoints:
+          type: number
+        riderPoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/StagePointsEntry"
+
+    AdminStage:
+      type: object
+      required: [id, stageNumber, name, date, status, transferDeadline, resultsProcessed]
+      properties:
+        id:
+          type: integer
+        stageNumber:
+          type: integer
+        name:
+          type: string
+        startCity:
+          type: string
+        endCity:
+          type: string
+        date:
+          type: string
+          format: date
+        stageType:
+          type: string
+        status:
+          type: string
+        transferDeadline:
+          type: ["string", "null"]
+          format: date-time
+        pcsUrl:
+          type: ["string", "null"]
+        resultsProcessed:
+          type: boolean
+
+    AdminStageUpdate:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [upcoming, transfer_closed, live, completed]
+        transferDeadline:
+          type: string
+          format: date-time
+        pcsUrl:
+          type: string
+
+    ProcessStageResult:
+      type: object
+      required: [success, ridersProcessed, message]
+      properties:
+        success:
+          type: boolean
+        ridersProcessed:
+          type: integer
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    SyncResult:
+      type: object
+      required: [success, ridersFound, message]
+      properties:
+        success:
+          type: boolean
+        ridersFound:
+          type: integer
+        message:
+          type: string
