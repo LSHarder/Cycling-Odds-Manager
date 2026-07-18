@@ -10,16 +10,28 @@ router.get("/profile", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const user = req.user;
+
+  // Read from the DB so we always return the latest teamName and isAdmin,
+  // not the stale snapshot stored in the session at login time.
+  const [dbUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id));
+
+  if (!dbUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
   res.json({
-    id: user.id,
-    replitId: user.id,
-    email: user.email ?? null,
-    firstName: user.firstName ?? null,
-    teamName: user.teamName ?? null,
-    profileImageUrl: user.profileImageUrl ?? null,
-    isAdmin: user.isAdmin ?? false,
-    createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
+    id: dbUser.id,
+    replitId: dbUser.id,
+    email: dbUser.email ?? null,
+    firstName: dbUser.firstName ?? null,
+    teamName: dbUser.teamName ?? null,
+    profileImageUrl: dbUser.profileImageUrl ?? null,
+    isAdmin: dbUser.isAdmin ?? false,
+    createdAt: dbUser.createdAt ? new Date(dbUser.createdAt).toISOString() : null,
   });
 });
 
