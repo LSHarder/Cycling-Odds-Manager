@@ -4,7 +4,8 @@ import {
   GetCurrentAuthUserResponse,
   LogoutMobileSessionResponse,
 } from '@workspace/api-zod';
-import { db, usersTable } from '@workspace/db';
+import { db, oauthStatesTable, usersTable } from '@workspace/db';
+import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import * as oidc from 'openid-client';
 
@@ -20,7 +21,34 @@ import {
   type SessionData,
 } from '../lib/auth';
 
-const OIDC_COOKIE_TTL = 10 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function saveOAuthState(
+  state: string,
+  codeVerifier: string,
+  nonce: string,
+  returnTo: string,
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+  await db
+    .insert(oauthStatesTable)
+    .values({ state, codeVerifier, nonce, returnTo, expiresAt })
+    .onConflictDoUpdate({
+      target: oauthStatesTable.state,
+      set: { codeVerifier, nonce, returnTo, expiresAt },
+    });
+}
+
+async function consumeOAuthState(state: string) {
+  const [row] = await db
+    .select()
+    .from(oauthStatesTable)
+    .where(eq(oauthStatesTable.state, state));
+  if (!row) return null;
+  await db.delete(oauthStatesTable).where(eq(oauthStatesTable.state, state));
+  if (row.expiresAt < new Date()) return null;
+  return row;
+}
 
 const router: IRouter = Router();
 
@@ -38,16 +66,6 @@ function setSessionCookie(res: Response, sid: string) {
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_TTL,
-  });
-}
-
-function setOidcCookie(res: Response, name: string, value: string) {
-  res.cookie(name, value, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: OIDC_COOKIE_TTL,
   });
 }
 
@@ -141,6 +159,10 @@ router.get('/login', async (req: Request, res: Response) => {
   const codeVerifier = oidc.randomPKCECodeVerifier();
   const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
 
+  // Store PKCE state in the database — avoids mobile Safari ITP wiping
+  // the browser cookies that were set moments before the cross-site redirect.
+  await saveOAuthState(state, codeVerifier, nonce, returnTo);
+
   const redirectTo = oidc.buildAuthorizationUrl(config, {
     redirect_uri: callbackUrl,
     scope: 'openid email profile offline_access',
@@ -151,11 +173,6 @@ router.get('/login', async (req: Request, res: Response) => {
     nonce,
   });
 
-  setOidcCookie(res, 'code_verifier', codeVerifier);
-  setOidcCookie(res, 'nonce', nonce);
-  setOidcCookie(res, 'state', state);
-  setOidcCookie(res, 'return_to', returnTo);
-
   res.redirect(redirectTo.href);
 });
 
@@ -165,14 +182,23 @@ router.get('/callback', async (req: Request, res: Response) => {
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
 
-  const codeVerifier = req.cookies?.code_verifier;
-  const nonce = req.cookies?.nonce;
-  const expectedState = req.cookies?.state;
-
-  if (!codeVerifier || !expectedState) {
+  // Retrieve the PKCE state from the database (keyed by the `state` param
+  // echoed back by the OIDC provider). This avoids any dependency on browser
+  // cookies during the cross-site redirect, fixing mobile Safari ITP issues.
+  const incomingState = req.query.state as string | undefined;
+  if (!incomingState) {
     res.redirect('/api/login');
     return;
   }
+
+  const oauthState = await consumeOAuthState(incomingState);
+  if (!oauthState) {
+    // State missing or expired — restart the flow
+    res.redirect('/api/login');
+    return;
+  }
+
+  const { codeVerifier, nonce, returnTo } = oauthState;
 
   const currentUrl = new URL(
     `${callbackUrl}?${new URL(req.url, `http://${req.headers.host}`).searchParams}`,
@@ -183,20 +209,13 @@ router.get('/callback', async (req: Request, res: Response) => {
     tokens = await oidc.authorizationCodeGrant(config, currentUrl, {
       pkceCodeVerifier: codeVerifier,
       expectedNonce: nonce,
-      expectedState,
+      expectedState: incomingState,
       idTokenExpected: true,
     });
   } catch {
     res.redirect('/api/login');
     return;
   }
-
-  const returnTo = getSafeReturnTo(req.cookies?.return_to);
-
-  res.clearCookie('code_verifier', { path: '/' });
-  res.clearCookie('nonce', { path: '/' });
-  res.clearCookie('state', { path: '/' });
-  res.clearCookie('return_to', { path: '/' });
 
   const claims = tokens.claims();
   if (!claims) {
@@ -222,7 +241,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
-  res.redirect(returnTo);
+  res.redirect(getSafeReturnTo(returnTo));
 });
 
 router.get('/logout', async (req: Request, res: Response) => {
