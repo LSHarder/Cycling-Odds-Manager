@@ -5,13 +5,16 @@ import {
   useListRiders, 
   useUpdateMyTeam, 
   getGetMyTeamQueryKey,
-  useGetCurrentStage
+  useGetCurrentStage,
+  useGetProfile,
+  useUpdateProfile,
+  getGetProfileQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { JerseyIcon } from "@/components/JerseyIcon";
-import { Search, Info, Trash2, X, Lock, Unlock } from "lucide-react";
+import { Search, Info, X, Lock, Unlock, Pencil, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,13 +27,19 @@ export default function Team() {
   const { data: team, isLoading: teamLoading } = useGetMyTeam({ query: { queryKey: getGetMyTeamQueryKey() }});
   const { data: allRiders } = useListRiders();
   const { data: currentStage } = useGetCurrentStage();
+  const { data: profile } = useGetProfile({ query: { queryKey: getGetProfileQueryKey() } });
   const updateTeam = useUpdateMyTeam();
+  const updateProfile = useUpdateProfile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [localTeam, setLocalTeam] = useState<{ id: number; isCaptain: boolean }[]>([]);
   const isInitialized = useRef(false);
+
+  // Team name editing
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   useEffect(() => {
     if (team && !isInitialized.current) {
@@ -43,6 +52,33 @@ export default function Team() {
       isInitialized.current = true;
     }
   }, [team]);
+
+  // Pre-fill name input when we start editing
+  const startEditing = () => {
+    setNameInput(profile?.teamName ?? profile?.firstName ?? "");
+    setEditingName(true);
+  };
+
+  const saveName = () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      toast({ title: "Name required", description: "Team name cannot be empty.", variant: "destructive" });
+      return;
+    }
+    updateProfile.mutate(
+      { data: { teamName: trimmed } },
+      {
+        onSuccess: () => {
+          toast({ title: "Team name updated!" });
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey() });
+          setEditingName(false);
+        },
+        onError: () => {
+          toast({ title: "Error", description: "Could not save team name.", variant: "destructive" });
+        },
+      }
+    );
+  };
 
   const filteredRiders = useMemo(() => {
     if (!allRiders) return [];
@@ -103,11 +139,42 @@ export default function Team() {
 
   if (teamLoading) return <div className="p-8 text-center text-muted-foreground">Loading team...</div>;
 
+  const displayName = profile?.teamName ?? profile?.firstName ?? "My Team";
+
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto space-y-8">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-heading font-bold uppercase tracking-tight">My Team</h1>
+          {/* Editable team name */}
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                className="text-2xl font-heading font-bold h-12 w-64"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditingName(false); }}
+                autoFocus
+                maxLength={40}
+              />
+              <Button size="icon" variant="default" onClick={saveName} disabled={updateProfile.isPending}>
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => setEditingName(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h1 className="text-4xl font-heading font-bold uppercase tracking-tight">{displayName}</h1>
+              <button
+                onClick={startEditing}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                title="Rename team"
+              >
+                <Pencil className="h-5 w-5" />
+              </button>
+            </div>
+          )}
           <p className="text-muted-foreground mt-1">Draft 8 riders. Pick a captain. Master the odds.</p>
         </div>
         
@@ -140,7 +207,7 @@ export default function Team() {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-heading font-bold">Selected ({localTeam.length}/8)</h2>
             <div className="text-sm text-muted-foreground flex items-center gap-1">
-              <Info className="h-4 w-4" /> Tap a rider to set as Captain (2× points)
+              <Info className="h-4 w-4" /> {isTransferOpen ? "Tap a rider to set as Captain (2× points)" : "Transfers locked for this stage"}
             </div>
           </div>
           
@@ -235,7 +302,6 @@ export default function Team() {
                 className="pl-9 bg-card"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                disabled={!isTransferOpen}
               />
             </div>
             
@@ -247,7 +313,11 @@ export default function Team() {
                     <div 
                       key={rider.id} 
                       className={`flex items-center justify-between p-2 rounded-lg text-sm transition-colors ${
-                        isSelected ? "opacity-50 grayscale" : "hover:bg-secondary cursor-pointer"
+                        isSelected
+                          ? "opacity-50 grayscale"
+                          : isTransferOpen
+                          ? "hover:bg-secondary cursor-pointer"
+                          : "cursor-default"
                       }`}
                       onClick={() => !isSelected && handleAddRider(rider.id)}
                     >
