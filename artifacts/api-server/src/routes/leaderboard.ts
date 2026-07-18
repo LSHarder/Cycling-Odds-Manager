@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, inArray } from "drizzle-orm";
 import { db, userStagePointsTable, usersTable, userTeamRidersTable } from "@workspace/db";
 import { GetLeaderboardQueryParams } from "@workspace/api-zod";
 
@@ -40,7 +40,7 @@ router.get("/leaderboard", async (req, res): Promise<void> => {
       ? await db
           .select()
           .from(usersTable)
-          .where(sql`${usersTable.id} = ANY(${userIds})`)
+          .where(inArray(usersTable.id, userIds))
       : [];
 
   const userMap = new Map(users.map((u) => [u.id, u]));
