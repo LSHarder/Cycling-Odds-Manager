@@ -20,4 +20,10 @@ export interface AdminStage {
   /** @nullable */
   pcsUrl?: string | null;
   resultsProcessed: boolean;
+  pollingEnabled?: boolean;
+  scrapeAttempts?: number;
+  /** @nullable */
+  lastScrapeAttemptAt?: Date | null;
+  /** @nullable */
+  lastScrapeError?: string | null;
 }

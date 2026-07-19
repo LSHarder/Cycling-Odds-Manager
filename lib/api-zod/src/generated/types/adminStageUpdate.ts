@@ -12,4 +12,5 @@ export interface AdminStageUpdate {
   status?: AdminStageUpdateStatus;
   transferDeadline?: Date;
   pcsUrl?: string;
+  pollingEnabled?: boolean;
 }

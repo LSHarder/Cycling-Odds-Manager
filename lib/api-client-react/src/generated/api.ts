@@ -21,6 +21,8 @@ import type {
 
 import type {
   AdminStage,
+  AdminStageResultsSaved,
+  AdminStageResultsUpdate,
   AdminStageUpdate,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -37,6 +39,7 @@ import type {
   MobileTokenExchangeSuccess,
   MyPointsSummary,
   MyTeam,
+  PollStageResult,
   ProcessStageResult,
   ProfileUpdate,
   Rider,
@@ -1696,6 +1699,149 @@ export const useAdminProcessStage = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAdminProcessStageMutationOptions(options));
+    }
+
+export const getAdminPollStageUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/stages/${id}/poll`
+}
+
+/**
+ * @summary Manually trigger one scrape+process attempt for a single stage
+ */
+export const adminPollStage = async (id: number, options?: RequestInit): Promise<PollStageResult> => {
+
+  return customFetch<PollStageResult>(getAdminPollStageUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminPollStageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminPollStage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminPollStage>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['adminPollStage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminPollStage>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  adminPollStage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminPollStageMutationResult = NonNullable<Awaited<ReturnType<typeof adminPollStage>>>
+
+    export type AdminPollStageMutationError = ErrorType<void>
+
+    /**
+ * @summary Manually trigger one scrape+process attempt for a single stage
+ */
+export const useAdminPollStage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminPollStage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminPollStage>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getAdminPollStageMutationOptions(options));
+    }
+
+export const getAdminUpdateStageResultsUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/stages/${id}/results`
+}
+
+/**
+ * @summary Manually enter or correct per-rider results for a stage
+ */
+export const adminUpdateStageResults = async (id: number,
+    adminStageResultsUpdate: AdminStageResultsUpdate, options?: RequestInit): Promise<AdminStageResultsSaved> => {
+
+  return customFetch<AdminStageResultsSaved>(getAdminUpdateStageResultsUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(adminStageResultsUpdate)
+  }
+);}
+
+
+
+
+
+export const getAdminUpdateStageResultsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStageResults>>, TError,{id: number;data: BodyType<AdminStageResultsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStageResults>>, TError,{id: number;data: BodyType<AdminStageResultsUpdate>}, TContext> => {
+
+const mutationKey = ['adminUpdateStageResults'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateStageResults>>, {id: number;data: BodyType<AdminStageResultsUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminUpdateStageResults(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateStageResultsMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateStageResults>>>
+    export type AdminUpdateStageResultsMutationBody = BodyType<AdminStageResultsUpdate>
+    export type AdminUpdateStageResultsMutationError = ErrorType<void>
+
+    /**
+ * @summary Manually enter or correct per-rider results for a stage
+ */
+export const useAdminUpdateStageResults = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStageResults>>, TError,{id: number;data: BodyType<AdminStageResultsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateStageResults>>,
+        TError,
+        {id: number;data: BodyType<AdminStageResultsUpdate>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateStageResultsMutationOptions(options));
     }
 
 export const getAdminUpdateStageUrl = (id: number,) => {

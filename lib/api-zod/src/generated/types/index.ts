@@ -7,6 +7,9 @@
  */
 
 export * from './adminStage';
+export * from './adminStageResultEntry';
+export * from './adminStageResultsSaved';
+export * from './adminStageResultsUpdate';
 export * from './adminStageUpdate';
 export * from './adminStageUpdateStatus';
 export * from './authorizationSessionHeaderParameter';
@@ -28,6 +31,7 @@ export * from './mobileTokenExchangeSuccess';
 export * from './myPointsSummary';
 export * from './myPointsSummaryStageBreakdownItem';
 export * from './myTeam';
+export * from './pollStageResult';
 export * from './processStageResult';
 export * from './profileUpdate';
 export * from './rider';

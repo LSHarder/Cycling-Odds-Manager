@@ -1,0 +1,204 @@
+/**
+ * Scraper for procyclingstats.com stage-result pages.
+ *
+ * PCS has no public API, so this parses their HTML directly. Selectors below
+ * were verified against real pages (tour-de-france/2024/stage-1, stage-5,
+ * stage-14) rather than guessed:
+ *
+ * - Each result tab (STAGE/GC/POINTS/KOM/YOUTH/TEAMS) is a `.resTab` div
+ *   under `#resultsCont`, matched to its tab button via a shared `data-id`.
+ *   The tab buttons carry `data-stagetype` (STAGE=1, POINTS=5, KOM=7).
+ * - Each tab's primary table (`.general table.results`) has `<thead><th
+ *   data-code="...">` columns whose order isn't fixed across stage types
+ *   (e.g. time trials drop some columns) — so columns are read by
+ *   `data-code`, not position.
+ * - DNF/DNS/OTL/DF/NR appear as literal text in the `rnk` cell instead of a
+ *   number (per the page's own legend). We collapse all of these to a single
+ *   `dnf: true` since our schema doesn't distinguish them.
+ * - The POINTS and KOM tabs' `.general` tables include a `delta_pnt` column
+ *   labeled "Today" — this is points gained on *this* stage specifically,
+ *   which is exactly what `komPointsEarned`/`sprintPointsEarned` need (not
+ *   the cumulative classification total). Riders absent from these tables
+ *   scored 0 that day.
+ * - Jersey holders live in a `<h4>Jersey wearers during stage</h4>` block
+ *   followed by a `<ul class="list">` of one `<li>` per classification
+ *   (General→yellow, Points→green, Mountains→polkadot, Youth→white).
+ *
+ * Note: the "combative rider" award isn't reliably present on this page
+ * across the stages checked, so it's not scraped — it stays a manual toggle
+ * in the admin results-entry UI.
+ *
+ * Fetching note: PCS's edge (Cloudflare-style bot detection) returns 403 to
+ * requests made with Node's built-in `fetch`/undici even with a full set of
+ * browser-like headers and a legit UA string — this was verified empirically
+ * (identical headers, same source IP: `curl` gets 200, Node `fetch` gets
+ * 403), which points to TLS/HTTP client fingerprinting rather than anything
+ * header-based. `curl` is shelled out to for the actual request as a result;
+ * it's a standard package on the target deploy environment (Replit's Nix
+ * images), and cheerio still does all the parsing.
+ */
+import * as cheerio from "cheerio";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+const USER_AGENT =
+  "Mozilla/5.0 (compatible; CyclingFantasy/1.0; +https://cycling-fantasy.repl.co)";
+
+async function fetchHtml(url: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      "curl",
+      ["--silent", "--show-error", "--fail", "--max-time", "20", "--location", "--max-redirs", "3", "-A", USER_AGENT, url],
+      { maxBuffer: 20 * 1024 * 1024 },
+    );
+    return stdout;
+  } catch (err: any) {
+    const stderr = err?.stderr?.toString().trim();
+    throw new Error(`Failed to fetch ${url}${stderr ? `: ${stderr}` : ""}`);
+  }
+}
+
+// Below this many parsed rows, treat the page as "stage not finished yet"
+// rather than a real result set (a full TDF field is 150+ riders).
+export const MIN_FINISHER_ROWS = 30;
+
+export type JerseyKey = "yellow" | "green" | "polkadot" | "white";
+
+export interface ScrapedRiderResult {
+  pcsSlug: string;
+  name: string;
+  position: number | null;
+  dnf: boolean;
+}
+
+export interface ScrapedStageResults {
+  riders: ScrapedRiderResult[];
+  jerseys: Partial<Record<JerseyKey, string>>;
+  komPointsBySlug: Map<string, number>;
+  sprintPointsBySlug: Map<string, number>;
+}
+
+export class StageNotReadyError extends Error {}
+
+const JERSEY_LABELS: Record<string, JerseyKey> = {
+  General: "yellow",
+  Points: "green",
+  Mountains: "polkadot",
+  Youth: "white",
+};
+
+function extractSlug(href: string | undefined): string | null {
+  if (!href) return null;
+  const match = href.match(/^rider\/(.+)$/);
+  return match && match[1] ? match[1] : null;
+}
+
+function findResTabByStageType(
+  $: cheerio.CheerioAPI,
+  stageType: string,
+): ReturnType<cheerio.CheerioAPI> | null {
+  const tabId = $(`a.selectResultTab[data-stagetype="${stageType}"]`).attr("data-id");
+  if (!tabId) return null;
+  const resTab = $(`#resultsCont > .resTab[data-id="${tabId}"]`);
+  return resTab.length ? resTab : null;
+}
+
+function parseGeneralTable($: cheerio.CheerioAPI, resTab: ReturnType<cheerio.CheerioAPI>) {
+  const table = resTab.find(".general table.results").first();
+  const headerMap = new Map<string, number>();
+  table.find("thead th").each((i, el) => {
+    const code = $(el).attr("data-code");
+    if (code) headerMap.set(code, i);
+  });
+  const rows = table
+    .find("tbody > tr")
+    .toArray()
+    .map((el) => $(el));
+  return { headerMap, rows };
+}
+
+function parseDeltaPntTable(
+  $: cheerio.CheerioAPI,
+  resTab: ReturnType<cheerio.CheerioAPI> | null,
+): Map<string, number> {
+  const result = new Map<string, number>();
+  if (!resTab) return result;
+  const { headerMap, rows } = parseGeneralTable($, resTab);
+  const riderNameIdx = headerMap.get("ridername");
+  const deltaIdx = headerMap.get("delta_pnt");
+  if (riderNameIdx === undefined || deltaIdx === undefined) return result;
+  for (const row of rows) {
+    const cells = row.find("> td");
+    const slug = extractSlug(
+      $(cells.get(riderNameIdx)).find("a[href^='rider/']").first().attr("href"),
+    );
+    if (!slug) continue;
+    const value = parseInt($(cells.get(deltaIdx)).text().trim(), 10);
+    result.set(slug, Number.isFinite(value) ? value : 0);
+  }
+  return result;
+}
+
+function parseJerseys($: cheerio.CheerioAPI): Partial<Record<JerseyKey, string>> {
+  const jerseys: Partial<Record<JerseyKey, string>> = {};
+  const heading = $("h4")
+    .filter((_, el) => $(el).text().trim() === "Jersey wearers during stage")
+    .first();
+  const list = heading.next("ul.list");
+  list.find("li").each((_, li) => {
+    const label = $(li).find(".w22").first().text().trim();
+    const key = JERSEY_LABELS[label];
+    if (!key) return;
+    const slug = extractSlug($(li).find("a[href^='rider/']").first().attr("href"));
+    if (slug) jerseys[key] = slug;
+  });
+  return jerseys;
+}
+
+export async function scrapeStageResults(url: string): Promise<ScrapedStageResults> {
+  const html = await fetchHtml(url);
+  const $ = cheerio.load(html);
+
+  const stageTab = findResTabByStageType($, "1");
+  if (!stageTab) {
+    throw new Error("Could not locate the STAGE results tab — page structure may have changed");
+  }
+
+  const { headerMap, rows } = parseGeneralTable($, stageTab);
+  const rnkIdx = headerMap.get("rnk");
+  const riderNameIdx = headerMap.get("ridername");
+  if (rnkIdx === undefined || riderNameIdx === undefined) {
+    throw new Error("Unexpected results table structure (missing rnk/ridername columns)");
+  }
+
+  const riders: ScrapedRiderResult[] = [];
+  for (const row of rows) {
+    const cells = row.find("> td");
+    const rnkText = $(cells.get(rnkIdx)).text().trim();
+    const rideCell = $(cells.get(riderNameIdx));
+    const riderLink = rideCell.find("a[href^='rider/']").first();
+    const slug = extractSlug(riderLink.attr("href"));
+    if (!slug) continue;
+    const position = /^\d+$/.test(rnkText) ? parseInt(rnkText, 10) : null;
+    riders.push({
+      pcsSlug: slug,
+      name: riderLink.text().trim(),
+      position,
+      dnf: position === null,
+    });
+  }
+
+  if (riders.length < MIN_FINISHER_ROWS) {
+    throw new StageNotReadyError(
+      `Only found ${riders.length} results rows (need >= ${MIN_FINISHER_ROWS}); stage likely hasn't finished yet`,
+    );
+  }
+
+  const komPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "7"));
+  const sprintPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "5"));
+  const jerseys = parseJerseys($);
+
+  return { riders, jerseys, komPointsBySlug, sprintPointsBySlug };
+}

@@ -17,6 +17,11 @@ export const stagesTable = pgTable("stages", {
   transferDeadline: timestamp("transfer_deadline", { withTimezone: true }),
   pcsUrl: text("pcs_url"),
   resultsProcessed: boolean("results_processed").notNull().default(false),
+  // Auto-scrape bookkeeping (see @workspace/api-server's scheduler.ts)
+  pollingEnabled: boolean("polling_enabled").notNull().default(true),
+  scrapeAttempts: integer("scrape_attempts").notNull().default(0),
+  lastScrapeAttemptAt: timestamp("last_scrape_attempt_at", { withTimezone: true }),
+  lastScrapeError: text("last_scrape_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()

@@ -19,6 +19,9 @@ export interface AuthUser {
   lastName: string | null;
   /** @nullable */
   profileImageUrl: string | null;
+  isAdmin: boolean;
+  /** @nullable */
+  teamName: string | null;
 }
 
 export interface AuthUserEnvelope {
@@ -109,6 +112,7 @@ export interface RiderUpdate {
   oddsLabel?: string;
   isActive?: boolean;
   dnf?: boolean;
+  pcsSlug?: string;
 }
 
 export type StageStageType = typeof StageStageType[keyof typeof StageStageType];
@@ -287,6 +291,12 @@ export interface AdminStage {
   /** @nullable */
   pcsUrl?: string | null;
   resultsProcessed: boolean;
+  pollingEnabled?: boolean;
+  scrapeAttempts?: number;
+  /** @nullable */
+  lastScrapeAttemptAt?: string | null;
+  /** @nullable */
+  lastScrapeError?: string | null;
 }
 
 export type AdminStageUpdateStatus = typeof AdminStageUpdateStatus[keyof typeof AdminStageUpdateStatus];
@@ -304,6 +314,7 @@ export interface AdminStageUpdate {
   status?: AdminStageUpdateStatus;
   transferDeadline?: string;
   pcsUrl?: string;
+  pollingEnabled?: boolean;
 }
 
 export interface ProcessStageResult {
@@ -317,6 +328,36 @@ export interface SyncResult {
   success: boolean;
   ridersFound: number;
   message: string;
+}
+
+export interface PollStageResult {
+  scraped: boolean;
+  processed: boolean;
+  ridersMatched?: number;
+  ridersUnmatched?: string[];
+  /** @nullable */
+  error?: string | null;
+}
+
+export interface AdminStageResultEntry {
+  riderId: number;
+  /** @nullable */
+  position: number | null;
+  dnf: boolean;
+  komPointsEarned?: number;
+  sprintPointsEarned?: number;
+  hadCombativeAward?: boolean;
+  wearsYellow?: boolean;
+  wearsGreen?: boolean;
+  wearsPolkadot?: boolean;
+  wearsWhite?: boolean;
+}
+
+export type AdminStageResultsUpdate = AdminStageResultEntry[];
+
+export interface AdminStageResultsSaved {
+  success: boolean;
+  count: number;
 }
 
 export type AuthorizationSessionHeaderParameter = string;

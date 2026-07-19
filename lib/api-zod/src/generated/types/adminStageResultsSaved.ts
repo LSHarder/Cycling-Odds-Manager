@@ -6,10 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface RiderUpdate {
-  oddsDecimal?: number;
-  oddsLabel?: string;
-  isActive?: boolean;
-  dnf?: boolean;
-  pcsSlug?: string;
+export interface AdminStageResultsSaved {
+  success: boolean;
+  count: number;
 }

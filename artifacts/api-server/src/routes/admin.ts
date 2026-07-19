@@ -1,21 +1,18 @@
 import { Router, type IRouter } from "express";
-import { eq, asc, inArray, sql } from "drizzle-orm";
-import {
-  db,
-  stagesTable,
-  ridersTable,
-  stageResultsTable,
-  userTeamRidersTable,
-  userStagePointsTable,
-} from "@workspace/db";
+import { eq, asc } from "drizzle-orm";
+import { db, stagesTable, ridersTable } from "@workspace/db";
 import {
   AdminUpdateStageParams,
   AdminUpdateStageBody,
   AdminUpdateRiderParams,
   AdminUpdateRiderBody,
   AdminProcessStageParams,
+  AdminPollStageParams,
+  AdminUpdateStageResultsParams,
+  AdminUpdateStageResultsBody,
 } from "@workspace/api-zod";
-import { scoreRider, applyCaptainBonus } from "../lib/scoring";
+import { processStage, ProcessStageError, upsertStageResultsForRiders } from "../lib/stageResults";
+import { pollSingleStage } from "../lib/scheduler";
 
 const router: IRouter = Router();
 
@@ -53,6 +50,10 @@ router.get("/admin/stages", async (req, res): Promise<void> => {
       transferDeadline: s.transferDeadline?.toISOString() ?? null,
       pcsUrl: s.pcsUrl ?? null,
       resultsProcessed: s.resultsProcessed,
+      pollingEnabled: s.pollingEnabled,
+      scrapeAttempts: s.scrapeAttempts,
+      lastScrapeAttemptAt: s.lastScrapeAttemptAt?.toISOString() ?? null,
+      lastScrapeError: s.lastScrapeError ?? null,
     }))
   );
 });
@@ -79,6 +80,8 @@ router.put("/admin/stages/:id", async (req, res): Promise<void> => {
   if (parsed.data.transferDeadline !== undefined)
     updateData.transferDeadline = new Date(parsed.data.transferDeadline);
   if (parsed.data.pcsUrl !== undefined) updateData.pcsUrl = parsed.data.pcsUrl;
+  if (parsed.data.pollingEnabled !== undefined)
+    updateData.pollingEnabled = parsed.data.pollingEnabled;
 
   const [updated] = await db
     .update(stagesTable)
@@ -103,6 +106,10 @@ router.put("/admin/stages/:id", async (req, res): Promise<void> => {
     transferDeadline: updated.transferDeadline?.toISOString() ?? null,
     pcsUrl: updated.pcsUrl ?? null,
     resultsProcessed: updated.resultsProcessed,
+    pollingEnabled: updated.pollingEnabled,
+    scrapeAttempts: updated.scrapeAttempts,
+    lastScrapeAttemptAt: updated.lastScrapeAttemptAt?.toISOString() ?? null,
+    lastScrapeError: updated.lastScrapeError ?? null,
   });
 });
 
@@ -128,6 +135,7 @@ router.put("/admin/riders/:id", async (req, res): Promise<void> => {
   if (parsed.data.oddsLabel !== undefined) updateData.oddsLabel = parsed.data.oddsLabel;
   if (parsed.data.isActive !== undefined) updateData.isActive = parsed.data.isActive;
   if (parsed.data.dnf !== undefined) updateData.dnf = parsed.data.dnf;
+  if (parsed.data.pcsSlug !== undefined) updateData.pcsSlug = parsed.data.pcsSlug;
 
   const [updated] = await db
     .update(ridersTable)
@@ -156,8 +164,9 @@ router.put("/admin/riders/:id", async (req, res): Promise<void> => {
 });
 
 /**
- * Process a stage: scrape or manually compute fantasy points for all riders
- * then distribute points to all users whose current team includes those riders.
+ * Process a stage: compute fantasy points for all riders with entered
+ * results, then distribute points to all users whose current team includes
+ * those riders. Results must already exist (via scrape or manual entry).
  */
 router.post("/admin/stages/:id/process", async (req, res): Promise<void> => {
   if (!requireAdmin(req, res)) return;
@@ -169,135 +178,68 @@ router.post("/admin/stages/:id/process", async (req, res): Promise<void> => {
     return;
   }
 
-  const [stage] = await db
-    .select()
-    .from(stagesTable)
-    .where(eq(stagesTable.id, params.data.id));
-
-  if (!stage) {
-    res.status(404).json({ error: "Stage not found" });
-    return;
-  }
-
-  if (stage.resultsProcessed) {
-    res.status(400).json({ error: "Stage already processed" });
-    return;
-  }
-
-  // Fetch stage results (must be entered via scrape or manual entry beforehand)
-  const results = await db
-    .select({
-      result: stageResultsTable,
-      rider: ridersTable,
-    })
-    .from(stageResultsTable)
-    .innerJoin(ridersTable, eq(stageResultsTable.riderId, ridersTable.id))
-    .where(eq(stageResultsTable.stageId, params.data.id));
-
-  if (results.length === 0) {
-    res.status(400).json({ error: "No stage results found. Please enter results first via scrape." });
-    return;
-  }
-
-  const finishers = results.filter((r) => !r.result.dnf);
-  const totalFinishers = finishers.length;
-  const errors: string[] = [];
-
-  // Compute fantasy points for each rider in this stage
-  const scoredRiders = results.map(({ result, rider }) => {
-    const scored = scoreRider({
-      riderId: rider.id,
-      oddsDecimal: parseFloat(rider.oddsDecimal as string),
-      position: result.position ?? null,
-      dnf: result.dnf,
-      totalFinishers,
-      komPointsEarned: result.komPointsEarned,
-      sprintPointsEarned: result.sprintPointsEarned,
-      hadCombativeAward: result.hadCombativeAward,
-      wearsYellow: result.wearsYellow,
-      wearsGreen: result.wearsGreen,
-      wearsPolkadot: result.wearsPolkadot,
-      wearsWhite: result.wearsWhite,
-    });
-
-    // Update the stage result record with computed points
-    return { result, scored };
-  });
-
-  // Update stage_results with computed points
-  await Promise.all(
-    scoredRiders.map(({ result, scored }) =>
-      db
-        .update(stageResultsTable)
-        .set({
-          pointsStage: scored.breakdown.stage.toString(),
-          pointsJerseys: scored.breakdown.jerseys.toString(),
-          pointsKom: scored.breakdown.kom.toString(),
-          pointsSprint: scored.breakdown.sprint.toString(),
-          pointsCombative: scored.breakdown.combative.toString(),
-          pointsPenalty: scored.breakdown.penalty.toString(),
-          fantasyPoints: scored.totalPoints.toString(),
-        })
-        .where(eq(stageResultsTable.id, result.result.id))
-    )
-  );
-
-  // Build map: riderId → scored
-  const ridersMap = new Map(scoredRiders.map(({ scored }) => [scored.riderId, scored]));
-
-  // Get all user teams and distribute points
-  const allTeams = await db.select().from(userTeamRidersTable);
-  const userIds = [...new Set(allTeams.map((t) => t.userId))];
-
-  let ridersProcessed = 0;
-
-  for (const userId of userIds) {
-    const userTeam = allTeams.filter((t) => t.userId === userId);
-
-    // Delete any existing points for this user+stage (idempotent)
-    await db
-      .delete(userStagePointsTable)
-      .where(
-        sql`${userStagePointsTable.userId} = ${userId} AND ${userStagePointsTable.stageId} = ${stage.id}`
-      );
-
-    for (const teamEntry of userTeam) {
-      const scored = ridersMap.get(teamEntry.riderId);
-      if (!scored) continue; // rider not in this stage
-
-      const basePoints = scored.totalPoints;
-      const totalPoints = teamEntry.isCaptain
-        ? applyCaptainBonus(basePoints)
-        : basePoints;
-
-      await db.insert(userStagePointsTable).values({
-        userId,
-        stageId: stage.id,
-        riderId: teamEntry.riderId,
-        isCaptain: teamEntry.isCaptain,
-        oddsDecimal: scored.oddsDecimal.toString(),
-        basePoints: basePoints.toString(),
-        oddsMultiplier: scored.oddsMultiplier.toString(),
-        totalPoints: totalPoints.toString(),
-        breakdown: scored.breakdown,
-      });
-
-      ridersProcessed++;
+  try {
+    const result = await processStage(params.data.id);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof ProcessStageError) {
+      res.status(err.status).json({ error: err.message });
+      return;
     }
+    throw err;
+  }
+});
+
+/**
+ * Manually trigger one scrape+process attempt for a single stage right now,
+ * bypassing the scheduler's pollingEnabled/attempts gate. Also how the
+ * scheduler itself processes a stage under the hood.
+ */
+router.post("/admin/stages/:id/poll", async (req, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = AdminPollStageParams.safeParse({ id: parseInt(rawId, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid stage ID" });
+    return;
   }
 
-  // Mark stage as processed and completed
-  await db
-    .update(stagesTable)
-    .set({ resultsProcessed: true, status: "completed" })
-    .where(eq(stagesTable.id, stage.id));
+  try {
+    const result = await pollSingleStage(params.data.id);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof ProcessStageError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
 
-  res.json({
-    success: true,
-    ridersProcessed,
-    message: `Stage ${stage.stageNumber} processed. Points distributed to ${userIds.length} teams.`,
-    errors,
-  });
+/**
+ * Manually enter or correct per-rider results for a stage — the fallback
+ * path for when auto-scraping fails or hasn't run yet. Does not process
+ * points itself; call /process (or /poll) afterwards to distribute them.
+ */
+router.put("/admin/stages/:id/results", async (req, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = AdminUpdateStageResultsParams.safeParse({ id: parseInt(rawId, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid stage ID" });
+    return;
+  }
+
+  const parsed = AdminUpdateStageResultsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  await upsertStageResultsForRiders(params.data.id, parsed.data);
+  res.json({ success: true, count: parsed.data.length });
 });
 
 /**
@@ -309,7 +251,7 @@ router.post("/admin/sync", async (req, res): Promise<void> => {
 
   try {
     // Use built-in fetch to hit PCS startlist
-    const url = "https://www.procyclingstats.com/race/tour-de-france/2025/startlist";
+    const url = "https://www.procyclingstats.com/race/tour-de-france/2026/startlist";
     const response = await fetch(url, {
       headers: {
         "User-Agent":

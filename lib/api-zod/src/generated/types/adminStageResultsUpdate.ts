@@ -5,11 +5,6 @@
  * Cycling Fantasy Manager API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminStageResultEntry } from './adminStageResultEntry';
 
-export interface RiderUpdate {
-  oddsDecimal?: number;
-  oddsLabel?: string;
-  isActive?: boolean;
-  dnf?: boolean;
-  pcsSlug?: string;
-}
+export type AdminStageResultsUpdate = AdminStageResultEntry[];

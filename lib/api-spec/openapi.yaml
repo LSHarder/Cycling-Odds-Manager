@@ -443,6 +443,58 @@ paths:
         "403":
           description: Forbidden
 
+  /admin/stages/{id}/poll:
+    post:
+      operationId: adminPollStage
+      tags: [admin]
+      summary: Manually trigger one scrape+process attempt for a single stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Poll attempt result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollStageResult"
+        "400":
+          description: Stage already processed
+        "403":
+          description: Forbidden
+        "404":
+          description: Stage not found
+
+  /admin/stages/{id}/results:
+    put:
+      operationId: adminUpdateStageResults
+      tags: [admin]
+      summary: Manually enter or correct per-rider results for a stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminStageResultsUpdate"
+      responses:
+        "200":
+          description: Results saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStageResultsSaved"
+        "403":
+          description: Forbidden
+
   /admin/stages/{id}:
     put:
       operationId: adminUpdateStage
@@ -538,7 +590,7 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, firstName, lastName, profileImageUrl]
+      required: [id, email, firstName, lastName, profileImageUrl, isAdmin, teamName]
       properties:
         id:
           type: string
@@ -549,6 +601,10 @@ components:
         lastName:
           type: ["string", "null"]
         profileImageUrl:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        teamName:
           type: ["string", "null"]
 
     AuthUserEnvelope:
@@ -676,6 +732,8 @@ components:
           type: boolean
         dnf:
           type: boolean
+        pcsSlug:
+          type: string
 
     Stage:
       type: object
@@ -959,6 +1017,15 @@ components:
           type: ["string", "null"]
         resultsProcessed:
           type: boolean
+        pollingEnabled:
+          type: boolean
+        scrapeAttempts:
+          type: integer
+        lastScrapeAttemptAt:
+          type: ["string", "null"]
+          format: date-time
+        lastScrapeError:
+          type: ["string", "null"]
 
     AdminStageUpdate:
       type: object
@@ -974,6 +1041,8 @@ components:
           format: date-time
         pcsUrl:
           type: string
+        pollingEnabled:
+          type: boolean
 
     ProcessStageResult:
       type: object
@@ -1000,3 +1069,59 @@ components:
           type: integer
         message:
           type: string
+
+    PollStageResult:
+      type: object
+      required: [scraped, processed]
+      properties:
+        scraped:
+          type: boolean
+        processed:
+          type: boolean
+        ridersMatched:
+          type: integer
+        ridersUnmatched:
+          type: array
+          items:
+            type: string
+        error:
+          type: ["string", "null"]
+
+    AdminStageResultEntry:
+      type: object
+      required: [riderId, position, dnf]
+      properties:
+        riderId:
+          type: integer
+        position:
+          type: ["integer", "null"]
+        dnf:
+          type: boolean
+        komPointsEarned:
+          type: integer
+        sprintPointsEarned:
+          type: integer
+        hadCombativeAward:
+          type: boolean
+        wearsYellow:
+          type: boolean
+        wearsGreen:
+          type: boolean
+        wearsPolkadot:
+          type: boolean
+        wearsWhite:
+          type: boolean
+
+    AdminStageResultsUpdate:
+      type: array
+      items:
+        $ref: "#/components/schemas/AdminStageResultEntry"
+
+    AdminStageResultsSaved:
+      type: object
+      required: [success, count]
+      properties:
+        success:
+          type: boolean
+        count:
+          type: integer

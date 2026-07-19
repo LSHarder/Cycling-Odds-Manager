@@ -69,6 +69,11 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    // Replit's infra routes /api to the backend service automatically; locally
+    // frontend and backend are separate origins, so proxy /api ourselves.
+    proxy: process.env.API_PROXY_TARGET
+      ? { '/api': { target: process.env.API_PROXY_TARGET, changeOrigin: true } }
+      : undefined,
     fs: {
       strict: true,
     },

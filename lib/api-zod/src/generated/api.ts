@@ -29,7 +29,9 @@ export const GetCurrentAuthUserResponse = zod.object({
   "email": zod.string().nullable(),
   "firstName": zod.string().nullable(),
   "lastName": zod.string().nullable(),
-  "profileImageUrl": zod.string().nullable()
+  "profileImageUrl": zod.string().nullable(),
+  "isAdmin": zod.boolean(),
+  "teamName": zod.string().nullable()
 }),zod.null()])
 })
 
@@ -418,7 +420,11 @@ export const AdminListStagesResponseItem = zod.object({
   "status": zod.string(),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish(),
-  "resultsProcessed": zod.boolean()
+  "resultsProcessed": zod.boolean(),
+  "pollingEnabled": zod.boolean().optional(),
+  "scrapeAttempts": zod.number().optional(),
+  "lastScrapeAttemptAt": zod.coerce.date().nullish(),
+  "lastScrapeError": zod.string().nullish()
 })
 export const AdminListStagesResponse = zod.array(AdminListStagesResponseItem)
 
@@ -439,6 +445,49 @@ export const AdminProcessStageResponse = zod.object({
 
 
 /**
+ * @summary Manually trigger one scrape+process attempt for a single stage
+ */
+export const AdminPollStageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminPollStageResponse = zod.object({
+  "scraped": zod.boolean(),
+  "processed": zod.boolean(),
+  "ridersMatched": zod.number().optional(),
+  "ridersUnmatched": zod.array(zod.string()).optional(),
+  "error": zod.string().nullish()
+})
+
+
+/**
+ * @summary Manually enter or correct per-rider results for a stage
+ */
+export const AdminUpdateStageResultsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminUpdateStageResultsBodyItem = zod.object({
+  "riderId": zod.number(),
+  "position": zod.number().nullable(),
+  "dnf": zod.boolean(),
+  "komPointsEarned": zod.number().optional(),
+  "sprintPointsEarned": zod.number().optional(),
+  "hadCombativeAward": zod.boolean().optional(),
+  "wearsYellow": zod.boolean().optional(),
+  "wearsGreen": zod.boolean().optional(),
+  "wearsPolkadot": zod.boolean().optional(),
+  "wearsWhite": zod.boolean().optional()
+})
+export const AdminUpdateStageResultsBody = zod.array(AdminUpdateStageResultsBodyItem)
+
+export const AdminUpdateStageResultsResponse = zod.object({
+  "success": zod.boolean(),
+  "count": zod.number()
+})
+
+
+/**
  * @summary Update stage details (date, deadline, status)
  */
 export const AdminUpdateStageParams = zod.object({
@@ -449,7 +498,8 @@ export const AdminUpdateStageBody = zod.object({
   "date": zod.coerce.date().optional(),
   "status": zod.enum(['upcoming', 'transfer_closed', 'live', 'completed']).optional(),
   "transferDeadline": zod.coerce.date().optional(),
-  "pcsUrl": zod.string().optional()
+  "pcsUrl": zod.string().optional(),
+  "pollingEnabled": zod.boolean().optional()
 })
 
 export const AdminUpdateStageResponse = zod.object({
@@ -463,7 +513,11 @@ export const AdminUpdateStageResponse = zod.object({
   "status": zod.string(),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish(),
-  "resultsProcessed": zod.boolean()
+  "resultsProcessed": zod.boolean(),
+  "pollingEnabled": zod.boolean().optional(),
+  "scrapeAttempts": zod.number().optional(),
+  "lastScrapeAttemptAt": zod.coerce.date().nullish(),
+  "lastScrapeError": zod.string().nullish()
 })
 
 
@@ -478,7 +532,8 @@ export const AdminUpdateRiderBody = zod.object({
   "oddsDecimal": zod.number().optional(),
   "oddsLabel": zod.string().optional(),
   "isActive": zod.boolean().optional(),
-  "dnf": zod.boolean().optional()
+  "dnf": zod.boolean().optional(),
+  "pcsSlug": zod.string().optional()
 })
 
 export const AdminUpdateRiderResponse = zod.object({
