@@ -10,6 +10,8 @@ import type { AdminStageUpdateStatus } from './adminStageUpdateStatus';
 export interface AdminStageUpdate {
   date?: Date;
   status?: AdminStageUpdateStatus;
+  /** Manual override; also recomputes transferDeadline unless it's set in the same request */
+  startTime?: Date;
   transferDeadline?: Date;
   pcsUrl?: string;
   pollingEnabled?: boolean;

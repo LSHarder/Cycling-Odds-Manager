@@ -146,6 +146,8 @@ export interface Stage {
   stageType: StageStageType;
   status: StageStatus;
   /** @nullable */
+  startTime?: string | null;
+  /** @nullable */
   transferDeadline: string | null;
   /** @nullable */
   pcsUrl?: string | null;
@@ -286,6 +288,11 @@ export interface AdminStage {
   date: string;
   stageType?: string;
   status: string;
+  /**
+     * Auto-scraped from PCS; transferDeadline is derived from this
+     * @nullable
+     */
+  startTime?: string | null;
   /** @nullable */
   transferDeadline: string | null;
   /** @nullable */
@@ -312,6 +319,8 @@ export const AdminStageUpdateStatus = {
 export interface AdminStageUpdate {
   date?: string;
   status?: AdminStageUpdateStatus;
+  /** Manual override; also recomputes transferDeadline unless it's set in the same request */
+  startTime?: string;
   transferDeadline?: string;
   pcsUrl?: string;
   pollingEnabled?: boolean;

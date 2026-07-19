@@ -15,6 +15,7 @@ function formatStage(s: typeof stagesTable.$inferSelect) {
     date: s.date,
     stageType: s.stageType,
     status: s.status,
+    startTime: s.startTime?.toISOString() ?? null,
     transferDeadline: s.transferDeadline?.toISOString() ?? null,
     pcsUrl: s.pcsUrl ?? null,
   };
@@ -35,19 +36,26 @@ router.get("/stages/current", async (_req, res): Promise<void> => {
     .from(stagesTable)
     .orderBy(asc(stagesTable.stageNumber));
 
-  const current = stages.find(
+  const currentIndex = stages.findIndex(
     (s) => s.status === "upcoming" || s.status === "transfer_closed" || s.status === "live"
-  ) ?? stages[stages.length - 1];
+  );
+  const current = currentIndex !== -1 ? stages[currentIndex] : stages[stages.length - 1];
 
   if (!current) {
     res.status(404).json({ error: "No active stage found" });
     return;
   }
 
+  // The transfer window only opens once the previous stage's points have
+  // actually been distributed (or this is stage 1) — otherwise it could show
+  // "open" while standings from the last stage are still unsettled.
+  const previousStage = currentIndex > 0 ? stages[currentIndex - 1] : null;
+  const previousStageSettled = previousStage === null || previousStage.resultsProcessed;
+
   const now = new Date();
   const deadline = current.transferDeadline ? new Date(current.transferDeadline) : null;
   const transferWindowOpen =
-    current.status === "upcoming" && deadline !== null && now < deadline;
+    current.status === "upcoming" && deadline !== null && now < deadline && previousStageSettled;
   const minutesUntilClose =
     transferWindowOpen && deadline
       ? Math.floor((deadline.getTime() - now.getTime()) / 60000)

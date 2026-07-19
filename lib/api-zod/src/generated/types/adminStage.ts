@@ -15,6 +15,11 @@ export interface AdminStage {
   date: Date;
   stageType?: string;
   status: string;
+  /**
+     * Auto-scraped from PCS; transferDeadline is derived from this
+     * @nullable
+     */
+  startTime?: Date | null;
   /** @nullable */
   transferDeadline: Date | null;
   /** @nullable */

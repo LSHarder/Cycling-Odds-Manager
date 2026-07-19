@@ -758,6 +758,9 @@ components:
         status:
           type: string
           enum: [upcoming, transfer_closed, live, completed]
+        startTime:
+          type: ["string", "null"]
+          format: date-time
         transferDeadline:
           type: ["string", "null"]
           format: date-time
@@ -1010,6 +1013,10 @@ components:
           type: string
         status:
           type: string
+        startTime:
+          type: ["string", "null"]
+          format: date-time
+          description: Auto-scraped from PCS; transferDeadline is derived from this
         transferDeadline:
           type: ["string", "null"]
           format: date-time
@@ -1036,6 +1043,10 @@ components:
         status:
           type: string
           enum: [upcoming, transfer_closed, live, completed]
+        startTime:
+          type: string
+          format: date-time
+          description: Manual override; also recomputes transferDeadline unless it's set in the same request
         transferDeadline:
           type: string
           format: date-time

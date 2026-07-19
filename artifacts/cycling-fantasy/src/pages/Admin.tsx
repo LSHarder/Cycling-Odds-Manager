@@ -325,7 +325,8 @@ export default function Admin() {
                       </div>
                       <div className="text-xl font-bold">{stage.name}</div>
                       <div className="text-sm text-muted-foreground">
-                        Deadline: {stage.transferDeadline ? new Date(stage.transferDeadline).toLocaleString() : "None"}
+                        Start: {stage.startTime ? new Date(stage.startTime).toLocaleString() : "Not scraped yet"}
+                        {" · "}Deadline: {stage.transferDeadline ? new Date(stage.transferDeadline).toLocaleString() : "None"}
                       </div>
                       {!stage.resultsProcessed && (
                         <div className="text-xs text-muted-foreground">

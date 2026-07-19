@@ -47,6 +47,7 @@ router.get("/admin/stages", async (req, res): Promise<void> => {
       date: s.date,
       stageType: s.stageType,
       status: s.status,
+      startTime: s.startTime?.toISOString() ?? null,
       transferDeadline: s.transferDeadline?.toISOString() ?? null,
       pcsUrl: s.pcsUrl ?? null,
       resultsProcessed: s.resultsProcessed,
@@ -77,6 +78,16 @@ router.put("/admin/stages/:id", async (req, res): Promise<void> => {
   const updateData: Record<string, any> = {};
   if (parsed.data.date !== undefined) updateData.date = parsed.data.date;
   if (parsed.data.status !== undefined) updateData.status = parsed.data.status;
+  if (parsed.data.startTime !== undefined) {
+    updateData.startTime = new Date(parsed.data.startTime);
+    // Manual startTime recomputes transferDeadline too, unless the caller
+    // also gave an explicit deadline in the same request.
+    if (parsed.data.transferDeadline === undefined) {
+      updateData.transferDeadline = new Date(
+        updateData.startTime.getTime() - 30 * 60 * 1000,
+      );
+    }
+  }
   if (parsed.data.transferDeadline !== undefined)
     updateData.transferDeadline = new Date(parsed.data.transferDeadline);
   if (parsed.data.pcsUrl !== undefined) updateData.pcsUrl = parsed.data.pcsUrl;
@@ -103,6 +114,7 @@ router.put("/admin/stages/:id", async (req, res): Promise<void> => {
     date: updated.date,
     stageType: updated.stageType,
     status: updated.status,
+    startTime: updated.startTime?.toISOString() ?? null,
     transferDeadline: updated.transferDeadline?.toISOString() ?? null,
     pcsUrl: updated.pcsUrl ?? null,
     resultsProcessed: updated.resultsProcessed,

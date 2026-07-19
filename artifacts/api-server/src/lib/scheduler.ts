@@ -1,11 +1,28 @@
-import { and, eq, isNotNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { db, stagesTable, type Stage } from "@workspace/db";
-import { scrapeStageResults, StageNotReadyError } from "./pcsScraper";
+import { scrapeStageResults, scrapeStageStartTimeText, StageNotReadyError } from "./pcsScraper";
 import { applyScrapedResults, processStage, ProcessStageError } from "./stageResults";
 import { logger } from "./logger";
+import { getWallClockTime, localWallClockToUtc } from "./timezone";
 
-export const DEFAULT_POLL_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
+// How often the scheduler ticks. Cheap on every tick (mostly DB-only checks
+// plus an occasional low-volume startTime backfill); the result-scraping
+// sweep below only actually fires within its daily window.
+export const DEFAULT_POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_SCRAPE_ATTEMPTS = 15;
+
+// Tour stages are virtually always finished well before this local time, so
+// checking once in the evening (with a short retry allowance in case a
+// stage is delayed) means results are almost always there on the first try
+// — a small handful of requests per stage instead of dozens.
+const DAILY_CHECK_TIMEZONE = "Europe/Copenhagen";
+const DAILY_CHECK_HOUR = 19;
+const DAILY_CHECK_WINDOW_MINUTES = 120;
+
+// PCS's stage time-table shows local race time; the Tour runs in France
+// (Europe/Paris) for virtually all of its route, so that's used to convert
+// the scraped "Start HH:MM" into a real UTC timestamp.
+const RACE_LOCAL_TIMEZONE = "Europe/Paris";
 
 export interface AttemptStageResult {
   scraped: boolean;
@@ -27,7 +44,7 @@ async function recordAttempt(stageId: number, error: string | null): Promise<voi
 }
 
 /**
- * Scrapes + processes a single stage. Used by both the periodic sweep
+ * Scrapes + processes a single stage. Used by both the daily sweep
  * (pollAndProcessStages) and the manual "poll now" admin endpoint.
  */
 export async function attemptStage(stage: Stage): Promise<AttemptStageResult> {
@@ -75,13 +92,60 @@ export async function pollSingleStage(stageId: number): Promise<AttemptStageResu
   return attemptStage(stage);
 }
 
+/**
+ * Backfills startTime (and the transferDeadline derived from it) for any
+ * stage that has a pcsUrl but no startTime yet. Cheap and time-insensitive —
+ * PCS publishes route/schedule info days or weeks ahead of race day, so this
+ * runs on every tick regardless of the daily results-check window.
+ */
+async function backfillStartTimes(): Promise<void> {
+  const candidates = await db
+    .select()
+    .from(stagesTable)
+    .where(
+      and(
+        isNull(stagesTable.startTime),
+        isNotNull(stagesTable.pcsUrl),
+        ne(stagesTable.status, "completed"),
+      ),
+    );
+
+  for (const stage of candidates) {
+    const timeText = await scrapeStageStartTimeText(stage.pcsUrl!);
+    if (!timeText) continue; // not published yet — try again next tick
+
+    const startTime = localWallClockToUtc(stage.date, timeText, RACE_LOCAL_TIMEZONE);
+    const transferDeadline = new Date(startTime.getTime() - 30 * 60 * 1000);
+    await db
+      .update(stagesTable)
+      .set({ startTime, transferDeadline })
+      .where(eq(stagesTable.id, stage.id));
+  }
+}
+
+function isWithinDailyCheckWindow(now: Date): boolean {
+  const { hour, minute } = getWallClockTime(now, DAILY_CHECK_TIMEZONE);
+  const minutesSinceMidnight = hour * 60 + minute;
+  const windowStart = DAILY_CHECK_HOUR * 60;
+  const windowEnd = windowStart + DAILY_CHECK_WINDOW_MINUTES;
+  return minutesSinceMidnight >= windowStart && minutesSinceMidnight < windowEnd;
+}
+
 let isPolling = false;
 
-/** Finds stages that are due for auto-processing and attempts each one. */
+/**
+ * Backfills start times every tick, then — only within the daily
+ * 19:00-21:00 Europe/Copenhagen window — scrapes+processes any stage that's
+ * due. Outside that window this is just the (cheap) startTime backfill.
+ */
 export async function pollAndProcessStages(): Promise<void> {
   if (isPolling) return; // avoid overlapping sweeps if one run takes longer than the interval
   isPolling = true;
   try {
+    await backfillStartTimes();
+
+    if (!isWithinDailyCheckWindow(new Date())) return;
+
     const today = new Date().toISOString().slice(0, 10);
     const dueStages = await db
       .select()
@@ -114,7 +178,10 @@ export function startScheduler(
   intervalHandle = setInterval(() => {
     pollAndProcessStages().catch((err) => logger.error({ err }, "Scheduler tick failed"));
   }, intervalMs);
-  logger.info({ intervalMs }, "Stage auto-scrape scheduler started");
+  logger.info(
+    { intervalMs, dailyCheckHour: DAILY_CHECK_HOUR, timezone: DAILY_CHECK_TIMEZONE },
+    "Stage auto-scrape scheduler started",
+  );
 }
 
 export function stopScheduler(): void {

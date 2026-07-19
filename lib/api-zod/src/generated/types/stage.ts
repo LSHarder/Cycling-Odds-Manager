@@ -18,6 +18,8 @@ export interface Stage {
   stageType: StageStageType;
   status: StageStatus;
   /** @nullable */
+  startTime?: Date | null;
+  /** @nullable */
   transferDeadline: Date | null;
   /** @nullable */
   pcsUrl?: string | null;

@@ -202,3 +202,35 @@ export async function scrapeStageResults(url: string): Promise<ScrapedStageResul
 
   return { riders, jerseys, komPointsBySlug, sprintPointsBySlug };
 }
+
+/**
+ * Scrapes a stage's official local start time (HH:MM) from PCS's per-stage
+ * "time table" page. Verified against a real, currently-live 2026 Tour
+ * stage: the page has a `table.basic` whose first `<tbody>` row is the
+ * keypoint literally labeled "Start" at km 0, with the same HH:MM repeated
+ * across all pace-estimate columns (they only diverge at later keypoints).
+ * Route/schedule pages are published well ahead of race day, so this can
+ * succeed days or weeks before the stage actually happens — unlike results.
+ *
+ * Returns null (not an error) if the page doesn't have this yet, since
+ * "not published yet" is an expected, ordinary state, not a failure.
+ */
+export async function scrapeStageStartTimeText(stagePcsUrl: string): Promise<string | null> {
+  const timeTableUrl = `${stagePcsUrl.replace(/\/+$/, "")}/info/time-table`;
+  let html: string;
+  try {
+    html = await fetchHtml(timeTableUrl);
+  } catch {
+    return null;
+  }
+  const $ = cheerio.load(html);
+  const firstRow = $("table.basic tbody tr").first();
+  if (!firstRow.length) return null;
+
+  const cells = firstRow.find("> td");
+  const keypoint = $(cells.get(1)).text().trim();
+  if (keypoint.toLowerCase() !== "start") return null;
+
+  const timeText = $(cells.get(2)).text().trim();
+  return /^\d{1,2}:\d{2}$/.test(timeText) ? timeText : null;
+}

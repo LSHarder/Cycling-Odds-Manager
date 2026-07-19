@@ -205,6 +205,7 @@ export const ListStagesResponseItem = zod.object({
   "date": zod.coerce.date(),
   "stageType": zod.enum(['flat', 'hilly', 'mountain', 'time_trial', 'rest']),
   "status": zod.enum(['upcoming', 'transfer_closed', 'live', 'completed']),
+  "startTime": zod.coerce.date().nullish(),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish()
 })
@@ -224,6 +225,7 @@ export const GetCurrentStageResponse = zod.object({
   "date": zod.coerce.date(),
   "stageType": zod.enum(['flat', 'hilly', 'mountain', 'time_trial', 'rest']),
   "status": zod.enum(['upcoming', 'transfer_closed', 'live', 'completed']),
+  "startTime": zod.coerce.date().nullish(),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish()
 }),
@@ -249,6 +251,7 @@ export const GetStageResponse = zod.object({
   "date": zod.coerce.date(),
   "stageType": zod.enum(['flat', 'hilly', 'mountain', 'time_trial', 'rest']),
   "status": zod.enum(['upcoming', 'transfer_closed', 'live', 'completed']),
+  "startTime": zod.coerce.date().nullish(),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish()
 }),
@@ -418,6 +421,7 @@ export const AdminListStagesResponseItem = zod.object({
   "date": zod.coerce.date(),
   "stageType": zod.string().optional(),
   "status": zod.string(),
+  "startTime": zod.coerce.date().nullish().describe('Auto-scraped from PCS; transferDeadline is derived from this'),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish(),
   "resultsProcessed": zod.boolean(),
@@ -497,6 +501,7 @@ export const AdminUpdateStageParams = zod.object({
 export const AdminUpdateStageBody = zod.object({
   "date": zod.coerce.date().optional(),
   "status": zod.enum(['upcoming', 'transfer_closed', 'live', 'completed']).optional(),
+  "startTime": zod.coerce.date().optional().describe('Manual override; also recomputes transferDeadline unless it\'s set in the same request'),
   "transferDeadline": zod.coerce.date().optional(),
   "pcsUrl": zod.string().optional(),
   "pollingEnabled": zod.boolean().optional()
@@ -511,6 +516,7 @@ export const AdminUpdateStageResponse = zod.object({
   "date": zod.coerce.date(),
   "stageType": zod.string().optional(),
   "status": zod.string(),
+  "startTime": zod.coerce.date().nullish().describe('Auto-scraped from PCS; transferDeadline is derived from this'),
   "transferDeadline": zod.coerce.date().nullable(),
   "pcsUrl": zod.string().nullish(),
   "resultsProcessed": zod.boolean(),

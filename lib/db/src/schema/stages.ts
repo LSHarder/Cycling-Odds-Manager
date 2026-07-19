@@ -14,6 +14,10 @@ export const stagesTable = pgTable("stages", {
   date: date("date", { mode: "string" }).notNull(),
   stageType: stageTypeEnum("stage_type").notNull().default("flat"),
   status: stageStatusEnum("status").notNull().default("upcoming"),
+  // Auto-scraped from PCS's time-table page (see pcsScraper.ts); transferDeadline
+  // is auto-derived from this (startTime - 30min) whenever it's set, but can
+  // still be overridden manually via PUT /admin/stages/:id.
+  startTime: timestamp("start_time", { withTimezone: true }),
   transferDeadline: timestamp("transfer_deadline", { withTimezone: true }),
   pcsUrl: text("pcs_url"),
   resultsProcessed: boolean("results_processed").notNull().default(false),
