@@ -468,6 +468,21 @@ paths:
         "404":
           description: Stage not found
 
+  /admin/stages/catch-up:
+    post:
+      operationId: adminCatchUpStages
+      tags: [admin]
+      summary: Process every currently-due stage right now, bypassing the daily time window
+      responses:
+        "200":
+          description: Catch-up result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatchUpResult"
+        "403":
+          description: Forbidden
+
   /admin/stages/{id}/results:
     put:
       operationId: adminUpdateStageResults
@@ -1097,6 +1112,40 @@ components:
             type: string
         error:
           type: ["string", "null"]
+
+    CatchUpStageResult:
+      type: object
+      required: [stageId, stageNumber, scraped, processed]
+      properties:
+        stageId:
+          type: integer
+        stageNumber:
+          type: integer
+        scraped:
+          type: boolean
+        processed:
+          type: boolean
+        ridersMatched:
+          type: integer
+        ridersUnmatched:
+          type: array
+          items:
+            type: string
+        error:
+          type: ["string", "null"]
+
+    CatchUpResult:
+      type: object
+      required: [attempted, processed, results]
+      properties:
+        attempted:
+          type: integer
+        processed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatchUpStageResult"
 
     AdminStageResultEntry:
       type: object

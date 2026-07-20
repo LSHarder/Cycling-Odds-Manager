@@ -6,6 +6,7 @@ import {
   useAdminUpdateStage,
   useAdminUpdateStageResults,
   useAdminSyncRiders,
+  useAdminCatchUpStages,
   useListRiders,
   getAdminListStagesQueryKey,
 } from "@workspace/api-client-react";
@@ -20,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { RefreshCw, Play, ShieldAlert, RotateCw, ClipboardEdit, ChevronDown } from "lucide-react";
+import { RefreshCw, Play, ShieldAlert, RotateCw, ClipboardEdit, ChevronDown, ListChecks } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Mirrors MAX_SCRAPE_ATTEMPTS in artifacts/api-server/src/lib/scheduler.ts — display only.
@@ -221,10 +222,26 @@ export default function Admin() {
   const pollStage = useAdminPollStage();
   const updateStage = useAdminUpdateStage();
   const syncRiders = useAdminSyncRiders();
+  const catchUp = useAdminCatchUpStages();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const invalidateStages = () => queryClient.invalidateQueries({ queryKey: getAdminListStagesQueryKey() });
+
+  const handleCatchUp = () => {
+    catchUp.mutate(undefined, {
+      onSuccess: (data) => {
+        toast({
+          title: "Catch-up complete",
+          description: `Processed ${data.processed} of ${data.attempted} pending stage(s).`,
+        });
+        invalidateStages();
+      },
+      onError: () => {
+        toast({ title: "Catch-up failed", description: "Could not process pending stages.", variant: "destructive" });
+      },
+    });
+  };
 
   const handleSyncRiders = () => {
     syncRiders.mutate(undefined, {
@@ -296,10 +313,16 @@ export default function Admin() {
           <p className="text-muted-foreground mt-1">Admin dashboard. Proceed with caution.</p>
         </div>
 
-        <Button onClick={handleSyncRiders} disabled={syncRiders.isPending} variant="outline" className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${syncRiders.isPending ? "animate-spin" : ""}`} />
-          Sync Riders from PCS
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleCatchUp} disabled={catchUp.isPending} variant="outline" className="gap-2">
+            <ListChecks className={`h-4 w-4 ${catchUp.isPending ? "animate-spin" : ""}`} />
+            Catch Up Pending Stages
+          </Button>
+          <Button onClick={handleSyncRiders} disabled={syncRiders.isPending} variant="outline" className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${syncRiders.isPending ? "animate-spin" : ""}`} />
+            Sync Riders from PCS
+          </Button>
+        </div>
       </header>
 
       <div className="space-y-4">

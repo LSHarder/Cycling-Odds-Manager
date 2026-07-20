@@ -12,7 +12,7 @@ import {
   AdminUpdateStageResultsBody,
 } from "@workspace/api-zod";
 import { processStage, ProcessStageError, upsertStageResultsForRiders } from "../lib/stageResults";
-import { pollSingleStage } from "../lib/scheduler";
+import { pollSingleStage, catchUpDueStages } from "../lib/scheduler";
 
 const router: IRouter = Router();
 
@@ -227,6 +227,18 @@ router.post("/admin/stages/:id/poll", async (req, res): Promise<void> => {
     }
     throw err;
   }
+});
+
+/**
+ * Processes every currently-due stage right now, bypassing the scheduler's
+ * daily time window (but not pollingEnabled/attempts). For catching up a
+ * backlog immediately — e.g. the app was just set up mid-Tour, or was
+ * offline for a few days — instead of waiting for the next scheduled window.
+ */
+router.post("/admin/stages/catch-up", async (req, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+  const result = await catchUpDueStages();
+  res.json(result);
 });
 
 /**

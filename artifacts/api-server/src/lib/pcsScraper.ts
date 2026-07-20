@@ -2,12 +2,16 @@
  * Scraper for procyclingstats.com stage-result pages.
  *
  * PCS has no public API, so this parses their HTML directly. Selectors below
- * were verified against real pages (tour-de-france/2024/stage-1, stage-5,
- * stage-14) rather than guessed:
+ * were verified against real pages — including a live 2026 Tour team time
+ * trial, which caught a real bug (see below) — rather than guessed:
  *
  * - Each result tab (STAGE/GC/POINTS/KOM/YOUTH/TEAMS) is a `.resTab` div
  *   under `#resultsCont`, matched to its tab button via a shared `data-id`.
- *   The tab buttons carry `data-stagetype` (STAGE=1, POINTS=5, KOM=7).
+ *   POINTS=5 and KOM=7 are stable `data-stagetype` codes, but the STAGE
+ *   tab's own code varies by format (1 for a normal road stage, 3 for a team
+ *   time trial — confirmed against the real 2026 Tour's stage 1 TTT), so
+ *   it's matched via the nav's `class="cur"` marker instead, which reliably
+ *   points at the STAGE tab when loading a stage's base URL directly.
  * - Each tab's primary table (`.general table.results`) has `<thead><th
  *   data-code="...">` columns whose order isn't fixed across stage types
  *   (e.g. time trials drop some columns) — so columns are read by
@@ -105,6 +109,18 @@ function findResTabByStageType(
   return resTab.length ? resTab : null;
 }
 
+// The STAGE tab's own data-stagetype code varies by format (1 for a normal
+// road stage, 3 for a team time trial — verified against a real 2026 TTT
+// opener) so it can't be matched by a fixed code like the others. The tab
+// marked `class="cur"` in the nav is reliably the active one when loading a
+// stage's base URL directly, which is always the STAGE tab.
+function findActiveStageResTab($: cheerio.CheerioAPI): ReturnType<cheerio.CheerioAPI> | null {
+  const tabId = $("ul.resultTabs li.cur a.selectResultTab").attr("data-id");
+  if (!tabId) return null;
+  const resTab = $(`#resultsCont > .resTab[data-id="${tabId}"]`);
+  return resTab.length ? resTab : null;
+}
+
 function parseGeneralTable($: cheerio.CheerioAPI, resTab: ReturnType<cheerio.CheerioAPI>) {
   const table = resTab.find(".general table.results").first();
   const headerMap = new Map<string, number>();
@@ -161,7 +177,7 @@ export async function scrapeStageResults(url: string): Promise<ScrapedStageResul
   const html = await fetchHtml(url);
   const $ = cheerio.load(html);
 
-  const stageTab = findResTabByStageType($, "1");
+  const stageTab = findActiveStageResTab($);
   if (!stageTab) {
     throw new Error("Could not locate the STAGE results tab — page structure may have changed");
   }

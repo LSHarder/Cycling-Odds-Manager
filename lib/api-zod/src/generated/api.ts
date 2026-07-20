@@ -465,6 +465,24 @@ export const AdminPollStageResponse = zod.object({
 
 
 /**
+ * @summary Process every currently-due stage right now, bypassing the daily time window
+ */
+export const AdminCatchUpStagesResponse = zod.object({
+  "attempted": zod.number(),
+  "processed": zod.number(),
+  "results": zod.array(zod.object({
+  "stageId": zod.number(),
+  "stageNumber": zod.number(),
+  "scraped": zod.boolean(),
+  "processed": zod.boolean(),
+  "ridersMatched": zod.number().optional(),
+  "ridersUnmatched": zod.array(zod.string()).optional(),
+  "error": zod.string().nullish()
+}))
+})
+
+
+/**
  * @summary Manually enter or correct per-rider results for a stage
  */
 export const AdminUpdateStageResultsParams = zod.object({

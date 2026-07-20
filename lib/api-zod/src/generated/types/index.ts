@@ -16,6 +16,8 @@ export * from './authorizationSessionHeaderParameter';
 export * from './authUser';
 export * from './authUserEnvelope';
 export * from './beginBrowserLoginParams';
+export * from './catchUpResult';
+export * from './catchUpStageResult';
 export * from './currentStageResponse';
 export * from './errorEnvelope';
 export * from './getLeaderboardParams';

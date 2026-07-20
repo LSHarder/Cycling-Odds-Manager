@@ -26,6 +26,7 @@ import type {
   AdminStageUpdate,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  CatchUpResult,
   CurrentStageResponse,
   ErrorEnvelope,
   GetLeaderboardParams,
@@ -1770,6 +1771,77 @@ export const useAdminPollStage = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAdminPollStageMutationOptions(options));
+    }
+
+export const getAdminCatchUpStagesUrl = () => {
+
+
+
+
+  return `/api/admin/stages/catch-up`
+}
+
+/**
+ * @summary Process every currently-due stage right now, bypassing the daily time window
+ */
+export const adminCatchUpStages = async ( options?: RequestInit): Promise<CatchUpResult> => {
+
+  return customFetch<CatchUpResult>(getAdminCatchUpStagesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminCatchUpStagesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCatchUpStages>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminCatchUpStages>>, TError,void, TContext> => {
+
+const mutationKey = ['adminCatchUpStages'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminCatchUpStages>>, void> = () => {
+
+
+          return  adminCatchUpStages(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminCatchUpStagesMutationResult = NonNullable<Awaited<ReturnType<typeof adminCatchUpStages>>>
+
+    export type AdminCatchUpStagesMutationError = ErrorType<void>
+
+    /**
+ * @summary Process every currently-due stage right now, bypassing the daily time window
+ */
+export const useAdminCatchUpStages = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCatchUpStages>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminCatchUpStages>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getAdminCatchUpStagesMutationOptions(options));
     }
 
 export const getAdminUpdateStageResultsUrl = (id: number,) => {

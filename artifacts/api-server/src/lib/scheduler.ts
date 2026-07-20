@@ -131,6 +131,23 @@ function isWithinDailyCheckWindow(now: Date): boolean {
   return minutesSinceMidnight >= windowStart && minutesSinceMidnight < windowEnd;
 }
 
+async function findDueStages(): Promise<Stage[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  return db
+    .select()
+    .from(stagesTable)
+    .where(
+      and(
+        ne(stagesTable.status, "completed"),
+        eq(stagesTable.resultsProcessed, false),
+        eq(stagesTable.pollingEnabled, true),
+        lt(stagesTable.scrapeAttempts, MAX_SCRAPE_ATTEMPTS),
+        lte(stagesTable.date, today),
+        isNotNull(stagesTable.pcsUrl),
+      ),
+    );
+}
+
 let isPolling = false;
 
 /**
@@ -146,27 +163,39 @@ export async function pollAndProcessStages(): Promise<void> {
 
     if (!isWithinDailyCheckWindow(new Date())) return;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const dueStages = await db
-      .select()
-      .from(stagesTable)
-      .where(
-        and(
-          ne(stagesTable.status, "completed"),
-          eq(stagesTable.resultsProcessed, false),
-          eq(stagesTable.pollingEnabled, true),
-          lt(stagesTable.scrapeAttempts, MAX_SCRAPE_ATTEMPTS),
-          lte(stagesTable.date, today),
-          isNotNull(stagesTable.pcsUrl),
-        ),
-      );
-
-    for (const stage of dueStages) {
+    for (const stage of await findDueStages()) {
       await attemptStage(stage);
     }
   } finally {
     isPolling = false;
   }
+}
+
+export interface CatchUpResult {
+  attempted: number;
+  processed: number;
+  results: Array<{ stageId: number; stageNumber: number } & AttemptStageResult>;
+}
+
+/**
+ * Manual catch-up: processes every currently-due stage right now, bypassing
+ * the daily time window (but still respecting pollingEnabled/attempts, same
+ * as the scheduler). For when the app was offline or freshly set up mid-Tour
+ * and has a backlog of already-finished stages to work through immediately
+ * instead of waiting for the next scheduled window.
+ */
+export async function catchUpDueStages(): Promise<CatchUpResult> {
+  const dueStages = await findDueStages();
+  const results: CatchUpResult["results"] = [];
+  for (const stage of dueStages) {
+    const result = await attemptStage(stage);
+    results.push({ stageId: stage.id, stageNumber: stage.stageNumber, ...result });
+  }
+  return {
+    attempted: results.length,
+    processed: results.filter((r) => r.processed).length,
+    results,
+  };
 }
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;

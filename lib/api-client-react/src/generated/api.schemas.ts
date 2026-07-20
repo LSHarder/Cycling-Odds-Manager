@@ -348,6 +348,23 @@ export interface PollStageResult {
   error?: string | null;
 }
 
+export interface CatchUpStageResult {
+  stageId: number;
+  stageNumber: number;
+  scraped: boolean;
+  processed: boolean;
+  ridersMatched?: number;
+  ridersUnmatched?: string[];
+  /** @nullable */
+  error?: string | null;
+}
+
+export interface CatchUpResult {
+  attempted: number;
+  processed: number;
+  results: CatchUpStageResult[];
+}
+
 export interface AdminStageResultEntry {
   riderId: number;
   /** @nullable */
