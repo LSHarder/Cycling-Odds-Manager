@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "seed": "tsx ./src/seedFromPcs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "cheerio": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
