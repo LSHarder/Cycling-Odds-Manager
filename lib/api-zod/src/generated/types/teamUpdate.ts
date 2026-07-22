@@ -8,7 +8,7 @@
 
 export interface TeamUpdate {
   /**
-     * @minItems 1
+     * @minItems 8
      * @maxItems 8
      */
   riderIds: number[];

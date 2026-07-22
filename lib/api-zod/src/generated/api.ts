@@ -299,12 +299,13 @@ export const GetMyTeamResponse = zod.object({
 /**
  * @summary Update my team selection (transfer window must be open)
  */
+export const updateMyTeamBodyRiderIdsMin = 8;
 export const updateMyTeamBodyRiderIdsMax = 8;
 
 
 
 export const UpdateMyTeamBody = zod.object({
-  "riderIds": zod.array(zod.number()).min(8).max(updateMyTeamBodyRiderIdsMax),
+  "riderIds": zod.array(zod.number()).min(updateMyTeamBodyRiderIdsMin).max(updateMyTeamBodyRiderIdsMax),
   "captainRiderId": zod.number()
 })
 
