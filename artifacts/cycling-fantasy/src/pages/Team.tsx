@@ -91,12 +91,16 @@ export default function Team() {
   const isTransferOpen = currentStage?.transferWindowOpen ?? false;
 
   const handleSave = () => {
+    if (localTeam.length !== 8) {
+      toast({ title: "Team incomplete", description: `Select ${8 - localTeam.length} more rider${8 - localTeam.length === 1 ? "" : "s"} — a team must have exactly 8.`, variant: "destructive" });
+      return;
+    }
     const captainId = localTeam.find(r => r.isCaptain)?.id;
-    if (!captainId && localTeam.length > 0) {
+    if (!captainId) {
       toast({ title: "Select a captain", description: "You must designate one rider as captain.", variant: "destructive" });
       return;
     }
-    
+
     updateTeam.mutate(
       { data: { riderIds: localTeam.map(r => r.id), captainRiderId: captainId || 0 } },
       {
@@ -195,7 +199,7 @@ export default function Team() {
             )}
           </div>
           
-          <Button onClick={handleSave} disabled={!isTransferOpen || updateTeam.isPending} className="font-bold">
+          <Button onClick={handleSave} disabled={!isTransferOpen || updateTeam.isPending || localTeam.length !== 8} className="font-bold">
             {updateTeam.isPending ? "Saving..." : "Save Team"}
           </Button>
         </div>

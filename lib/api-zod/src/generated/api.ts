@@ -304,7 +304,7 @@ export const updateMyTeamBodyRiderIdsMax = 8;
 
 
 export const UpdateMyTeamBody = zod.object({
-  "riderIds": zod.array(zod.number()).min(1).max(updateMyTeamBodyRiderIdsMax),
+  "riderIds": zod.array(zod.number()).min(8).max(updateMyTeamBodyRiderIdsMax),
   "captainRiderId": zod.number()
 })
 

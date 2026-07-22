@@ -89,10 +89,6 @@ router.put("/team", async (req, res): Promise<void> => {
 
   const { riderIds, captainRiderId } = parsed.data;
 
-  if (riderIds.length > 8) {
-    res.status(400).json({ error: "Maximum 8 riders allowed" });
-    return;
-  }
   if (!riderIds.includes(captainRiderId)) {
     res.status(400).json({ error: "Captain must be one of your selected riders" });
     return;
