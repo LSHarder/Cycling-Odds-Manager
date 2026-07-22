@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   ridersTable,
@@ -40,6 +40,12 @@ export interface StageResultRow {
  * passes every optional field, so a scrape fully overwrites prior values;
  * the admin manual-entry path passes only what was typed, so it can correct
  * a single field without disturbing the rest.
+ *
+ * Also flips the rider-level riders.dnf flag to true for anyone marked DNF
+ * on this stage — that's what actually makes them ineligible for future
+ * transfers (team.ts blocks selecting a dnf rider) and shows the DNF badge
+ * in the transfer UI. One-way: a stage DNF here never clears the flag, since
+ * riders don't un-DNF a race; only a manual admin rider edit can reset it.
  */
 export async function upsertStageResultsForRiders(
   stageId: number,
@@ -71,6 +77,11 @@ export async function upsertStageResultsForRiders(
         });
     }),
   );
+
+  const dnfRiderIds = rows.filter((row) => row.dnf).map((row) => row.riderId);
+  if (dnfRiderIds.length > 0) {
+    await db.update(ridersTable).set({ dnf: true }).where(inArray(ridersTable.id, dnfRiderIds));
+  }
 }
 
 function normalizeNameTokens(name: string): string {

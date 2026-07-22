@@ -117,6 +117,7 @@ export default function Team() {
 
   const handleAddRider = (riderId: number) => {
     if (!isTransferOpen) return;
+    if (allRiders?.find(r => r.id === riderId)?.dnf) return;
     if (localTeam.length >= 8) {
       toast({ title: "Team full", description: "You can only select 8 riders.", variant: "destructive" });
       return;
@@ -313,17 +314,18 @@ export default function Team() {
               <div className="p-2 flex flex-col gap-1">
                 {filteredRiders.map(rider => {
                   const isSelected = localTeam.some(r => r.id === rider.id);
+                  const isUnavailable = isSelected || rider.dnf;
                   return (
-                    <div 
-                      key={rider.id} 
+                    <div
+                      key={rider.id}
                       className={`flex items-center justify-between p-2 rounded-lg text-sm transition-colors ${
-                        isSelected
+                        isUnavailable
                           ? "opacity-50 grayscale"
                           : isTransferOpen
                           ? "hover:bg-secondary cursor-pointer"
                           : "cursor-default"
                       }`}
-                      onClick={() => !isSelected && handleAddRider(rider.id)}
+                      onClick={() => !isUnavailable && handleAddRider(rider.id)}
                     >
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className="flex gap-0.5 w-8 shrink-0 justify-end">
