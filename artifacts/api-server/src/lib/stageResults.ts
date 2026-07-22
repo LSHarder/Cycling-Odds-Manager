@@ -36,8 +36,10 @@ export interface StageResultRow {
 /**
  * Upserts stage_results rows keyed by (stageId, riderId). Only the fields
  * present on each row are written — omitted optional fields leave any
- * existing value untouched (e.g. the scraper never knows about the
- * combative-rider award, so it must not clobber a manual admin entry).
+ * existing value untouched. The scraper path (applyScrapedResults) always
+ * passes every optional field, so a scrape fully overwrites prior values;
+ * the admin manual-entry path passes only what was typed, so it can correct
+ * a single field without disturbing the rest.
  */
 export async function upsertStageResultsForRiders(
   stageId: number,
@@ -132,6 +134,7 @@ export async function applyScrapedResults(
       dnf: scrapedRider.dnf,
       komPointsEarned: scraped.komPointsBySlug.get(scrapedRider.pcsSlug) ?? 0,
       sprintPointsEarned: scraped.sprintPointsBySlug.get(scrapedRider.pcsSlug) ?? 0,
+      hadCombativeAward: scraped.combativeRiderSlug === scrapedRider.pcsSlug,
       wearsYellow: scraped.jerseys.yellow === scrapedRider.pcsSlug,
       wearsGreen: scraped.jerseys.green === scrapedRider.pcsSlug,
       wearsPolkadot: scraped.jerseys.polkadot === scrapedRider.pcsSlug,

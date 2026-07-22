@@ -28,9 +28,14 @@
  *   followed by a `<ul class="list">` of one `<li>` per classification
  *   (General→yellow, Points→green, Mountains→polkadot, Youth→white).
  *
- * Note: the "combative rider" award isn't reliably present on this page
- * across the stages checked, so it's not scraped — it stays a manual toggle
- * in the admin results-entry UI.
+ * - The "most combative rider" award isn't on the main results page at all —
+ *   it lives on a separate `/info/complementary-results` page, as a
+ *   `<h3>Most combative rider</h3>` heading immediately followed by a
+ *   `table.basic` with one ranked row (verified against three real, live
+ *   2026 Tour road stages). Team time trials have no such heading — there's
+ *   no attacking to reward on a team-only day — confirmed against the same
+ *   Tour's stage 1 TTT, where the page loads fine but the heading is simply
+ *   absent, which is treated as "no award today," not an error.
  *
  * - Team time trials render the STAGE tab as `.general ul.list.ttt-results`
  *   instead of the usual `table.results` (confirmed against the real 2026
@@ -92,6 +97,7 @@ export interface ScrapedStageResults {
   jerseys: Partial<Record<JerseyKey, string>>;
   komPointsBySlug: Map<string, number>;
   sprintPointsBySlug: Map<string, number>;
+  combativeRiderSlug: string | null;
 }
 
 export class StageNotReadyError extends Error {}
@@ -258,8 +264,35 @@ export async function scrapeStageResults(url: string): Promise<ScrapedStageResul
   const komPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "7"));
   const sprintPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "5"));
   const jerseys = parseJerseys($);
+  const combativeRiderSlug = await scrapeCombativeRider(url);
 
-  return { riders, jerseys, komPointsBySlug, sprintPointsBySlug };
+  return { riders, jerseys, komPointsBySlug, sprintPointsBySlug, combativeRiderSlug };
+}
+
+/**
+ * Scrapes the stage's "Most combative rider" award from PCS's separate
+ * `/info/complementary-results` page — verified against three real, live
+ * 2026 Tour road stages, each with a `<h3>Most combative rider</h3>` heading
+ * immediately followed by a `table.basic` with one ranked row. A team time
+ * trial (stage 1) loads this page fine but has no such heading at all —
+ * there's no attacking to reward on a team-only day — so a missing heading
+ * is treated as "no award today," not a failure.
+ */
+export async function scrapeCombativeRider(stagePcsUrl: string): Promise<string | null> {
+  const url = `${stagePcsUrl.replace(/\/+$/, "")}/info/complementary-results`;
+  let html: string;
+  try {
+    html = await fetchHtml(url);
+  } catch {
+    return null;
+  }
+  const $ = cheerio.load(html);
+  const heading = $("h3")
+    .filter((_, el) => $(el).text().trim() === "Most combative rider")
+    .first();
+  if (!heading.length) return null;
+  const firstRow = heading.next("table.basic").find("tbody tr").first();
+  return extractSlug(firstRow.find("a[href^='rider/']").first().attr("href"));
 }
 
 /**
