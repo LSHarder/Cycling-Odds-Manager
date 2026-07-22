@@ -13,6 +13,7 @@ import {
 } from "@workspace/api-zod";
 import { processStage, ProcessStageError, upsertStageResultsForRiders } from "../lib/stageResults";
 import { pollSingleStage, catchUpDueStages } from "../lib/scheduler";
+import { scrapeStartlist } from "../lib/pcsScraper";
 
 const router: IRouter = Router();
 
@@ -267,39 +268,19 @@ router.put("/admin/stages/:id/results", async (req, res): Promise<void> => {
 });
 
 /**
- * Sync riders from ProCyclingStats TDF startlist.
- * Uses Firecrawl to scrape the startlist page.
+ * Sync riders from the ProCyclingStats TDF startlist: adds anyone new
+ * (e.g. a late-named replacement for a withdrawn rider) and updates
+ * proTeam/nationality for existing riders (e.g. a mid-season transfer).
+ * Matched by pcsSlug, same as the one-time initial seed script this
+ * doubles as a re-runnable counterpart to. Odds are never touched here —
+ * those are set independently via the admin rider-edit endpoint.
  */
 router.post("/admin/sync", async (req, res): Promise<void> => {
   if (!requireAdmin(req, res)) return;
 
+  let scraped: Awaited<ReturnType<typeof scrapeStartlist>>;
   try {
-    // Use built-in fetch to hit PCS startlist
-    const url = "https://www.procyclingstats.com/race/tour-de-france/2026/startlist";
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; CyclingFantasy/1.0; +https://cycling-fantasy.repl.co)",
-      },
-    });
-
-    if (!response.ok) {
-      res.json({
-        success: false,
-        ridersFound: 0,
-        message: `PCS returned HTTP ${response.status}. Manual rider entry may be needed.`,
-      });
-      return;
-    }
-
-    // We can't easily parse HTML server-side without cheerio
-    // Return a message to the admin that they should update manually
-    res.json({
-      success: true,
-      ridersFound: 0,
-      message:
-        "PCS sync initiated. If rider data is already seeded, no action needed. Use the admin panel to update individual rider odds or DNF status.",
-    });
+    scraped = await scrapeStartlist(2026);
   } catch (err) {
     req.log.error({ err }, "Failed to sync from PCS");
     res.json({
@@ -307,7 +288,37 @@ router.post("/admin/sync", async (req, res): Promise<void> => {
       ridersFound: 0,
       message: "Failed to reach ProCyclingStats. Please update riders manually.",
     });
+    return;
   }
+
+  const existing = await db
+    .select({ id: ridersTable.id, pcsSlug: ridersTable.pcsSlug, proTeam: ridersTable.proTeam, nationality: ridersTable.nationality })
+    .from(ridersTable);
+  const bySlug = new Map(existing.filter((r) => r.pcsSlug).map((r) => [r.pcsSlug as string, r]));
+
+  const newRiders = scraped.filter((r) => !bySlug.has(r.pcsSlug));
+  if (newRiders.length > 0) {
+    await db.insert(ridersTable).values(newRiders);
+  }
+
+  const changed = scraped.filter((r) => {
+    const current = bySlug.get(r.pcsSlug);
+    return current && (current.proTeam !== r.proTeam || current.nationality !== r.nationality);
+  });
+  await Promise.all(
+    changed.map((r) =>
+      db
+        .update(ridersTable)
+        .set({ proTeam: r.proTeam, nationality: r.nationality })
+        .where(eq(ridersTable.pcsSlug, r.pcsSlug)),
+    ),
+  );
+
+  res.json({
+    success: true,
+    ridersFound: scraped.length,
+    message: `Found ${scraped.length} riders on PCS: added ${newRiders.length} new, updated ${changed.length} existing.`,
+  });
 });
 
 export default router;

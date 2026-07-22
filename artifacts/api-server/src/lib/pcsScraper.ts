@@ -326,3 +326,84 @@ export async function scrapeStageStartTimeText(stagePcsUrl: string): Promise<str
   const timeText = $(cells.get(2)).text().trim();
   return /^\d{1,2}:\d{2}$/.test(timeText) ? timeText : null;
 }
+
+// PCS writes rider names as "SURNAME Given" (surname in caps). Reformats to
+// "Given Surname" — best-effort, not guaranteed perfect for every name.
+// (Mirrors scripts/src/seedFromPcs.ts, which verified this against the real
+// startlist during the one-time initial seed.)
+function formatRiderName(raw: string): string {
+  const tokens = raw.trim().split(/\s+/);
+  let splitIdx = tokens.length;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== tokens[i].toUpperCase() || !/[A-ZÀ-ÖØ-Þ]/.test(tokens[i])) {
+      splitIdx = i;
+      break;
+    }
+  }
+  const surnameTokens = tokens.slice(0, splitIdx);
+  const givenTokens = tokens.slice(splitIdx);
+  if (surnameTokens.length === 0 || givenTokens.length === 0) return raw.trim();
+  const toTitleCase = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();
+  const surname = surnameTokens.map((t) => t.split("-").map(toTitleCase).join("-")).join(" ");
+  return `${givenTokens.join(" ")} ${surname}`;
+}
+
+// Common WorldTour rider nationalities. Falls back to the raw ISO code
+// (uppercased) for anything not listed here.
+const COUNTRY_NAMES: Record<string, string> = {
+  si: "Slovenia", dk: "Denmark", be: "Belgium", fr: "France", nl: "Netherlands",
+  es: "Spain", it: "Italy", gb: "Great Britain", de: "Germany", pt: "Portugal",
+  us: "United States", au: "Australia", ca: "Canada", co: "Colombia", ec: "Ecuador",
+  no: "Norway", se: "Sweden", pl: "Poland", cz: "Czechia", sk: "Slovakia",
+  at: "Austria", ch: "Switzerland", ie: "Ireland", lu: "Luxembourg", lv: "Latvia",
+  lt: "Lithuania", ee: "Estonia", nz: "New Zealand", za: "South Africa", jp: "Japan",
+  kr: "South Korea", uy: "Uruguay", ar: "Argentina", br: "Brazil", mx: "Mexico",
+  kz: "Kazakhstan", er: "Eritrea", rw: "Rwanda", ru: "Russia", ua: "Ukraine",
+  hu: "Hungary", fi: "Finland", is: "Iceland", cn: "China", hr: "Croatia",
+};
+
+export interface ScrapedStartlistRider {
+  name: string;
+  proTeam: string;
+  nationality: string;
+  pcsSlug: string;
+}
+
+/**
+ * Scrapes the full TDF startlist (name, team, nationality per rider) from
+ * PCS's `/startlist` page. Same selectors as the one-time initial seed
+ * script, so this doubles as its "run again mid-Tour" counterpart — e.g. a
+ * rider withdraws pre-race and their team names a replacement.
+ */
+export async function scrapeStartlist(year: number): Promise<ScrapedStartlistRider[]> {
+  const html = await fetchHtml(`https://www.procyclingstats.com/race/tour-de-france/${year}/startlist`);
+  const $ = cheerio.load(html);
+  const riders: ScrapedStartlistRider[] = [];
+
+  $("ul.startlist_v4 > li").each((_, teamLi) => {
+    const teamName = $(teamLi)
+      .find(".ridersCont a.team")
+      .first()
+      .text()
+      .trim()
+      .replace(/\s*\((WT|PRT|PCT)\)\s*$/, "");
+    if (!teamName) return;
+
+    $(teamLi)
+      .find(".ridersCont ul li")
+      .each((_, riderLi) => {
+        const link = $(riderLi).find("a[href^='rider/']").first();
+        const slug = extractSlug(link.attr("href"));
+        if (!slug) return;
+        const countryCode = $(riderLi).find("span.flag").first().attr("class")?.split(/\s+/)[1] ?? "";
+        riders.push({
+          name: formatRiderName(link.text()),
+          proTeam: teamName,
+          nationality: COUNTRY_NAMES[countryCode] ?? countryCode.toUpperCase(),
+          pcsSlug: slug,
+        });
+      });
+  });
+
+  return riders;
+}
