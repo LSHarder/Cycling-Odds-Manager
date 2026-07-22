@@ -31,7 +31,9 @@ app.use(
 
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
-app.use(express.json());
+// Default 100kb is too small for POST /admin/stages/:id/scrape-from-html,
+// which carries a full PCS page's raw HTML (~350kb+) as a JSON string field.
+app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(authMiddleware);
 
