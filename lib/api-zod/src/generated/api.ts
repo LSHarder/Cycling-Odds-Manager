@@ -511,6 +511,25 @@ export const AdminUpdateStageResultsResponse = zod.object({
 
 
 /**
+ * @summary Parse stage results from pasted PCS page HTML (bypasses server-side fetch)
+ */
+export const AdminScrapeFromHtmlParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminScrapeFromHtmlBody = zod.object({
+  "html": zod.string(),
+  "complementaryHtml": zod.string().nullish()
+})
+
+export const AdminScrapeFromHtmlResponse = zod.object({
+  "success": zod.boolean(),
+  "ridersMatched": zod.number(),
+  "ridersUnmatched": zod.array(zod.string())
+})
+
+
+/**
  * @summary Update stage details (date, deadline, status)
  */
 export const AdminUpdateStageParams = zod.object({

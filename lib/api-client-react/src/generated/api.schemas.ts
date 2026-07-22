@@ -386,6 +386,22 @@ export interface AdminStageResultsSaved {
   count: number;
 }
 
+export interface AdminScrapeFromHtml {
+  /** Full page source of the stage's PCS results page */
+  html: string;
+  /**
+   * Optional page source of the /info/complementary-results page, for the combative-rider award
+   * @nullable
+   */
+  complementaryHtml?: string | null;
+}
+
+export interface ScrapeFromHtmlResult {
+  success: boolean;
+  ridersMatched: number;
+  ridersUnmatched: string[];
+}
+
 export type AuthorizationSessionHeaderParameter = string;
 
 export type BeginBrowserLoginParams = {

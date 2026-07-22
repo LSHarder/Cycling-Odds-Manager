@@ -5,6 +5,7 @@ import {
   useAdminPollStage,
   useAdminUpdateStage,
   useAdminUpdateStageResults,
+  useAdminScrapeFromHtml,
   useAdminSyncRiders,
   useAdminCatchUpStages,
   useListRiders,
@@ -18,10 +19,11 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { RefreshCw, Play, ShieldAlert, RotateCw, ClipboardEdit, ChevronDown, ListChecks } from "lucide-react";
+import { RefreshCw, Play, ShieldAlert, RotateCw, ClipboardEdit, ChevronDown, ListChecks, ClipboardPaste } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Mirrors MAX_SCRAPE_ATTEMPTS in artifacts/api-server/src/lib/scheduler.ts — display only.
@@ -216,6 +218,76 @@ function ManualResultsEditor({ stageId }: { stageId: number }) {
   );
 }
 
+// Fallback for when PCS has blocked this server's own outbound requests
+// outright (a real 403 from curl itself, not just the usual Node-fetch
+// block) -- an admin's own browser isn't on that block list, so they can
+// open the stage's PCS results page normally, view source / save it, and
+// paste the HTML here instead. Same parser as the live scraper.
+function ScrapeFromHtmlEditor({ stageId }: { stageId: number }) {
+  const [html, setHtml] = useState("");
+  const [complementaryHtml, setComplementaryHtml] = useState("");
+  const scrapeFromHtml = useAdminScrapeFromHtml();
+  const { toast } = useToast();
+
+  const handleSubmit = () => {
+    if (!html.trim()) {
+      toast({ title: "Nothing pasted", description: "Paste the stage's PCS results page source first." });
+      return;
+    }
+
+    scrapeFromHtml.mutate(
+      { id: stageId, data: { html, complementaryHtml: complementaryHtml.trim() || undefined } },
+      {
+        onSuccess: (data) => {
+          const unmatched = data.ridersUnmatched.length
+            ? ` (${data.ridersUnmatched.length} unmatched: ${data.ridersUnmatched.slice(0, 5).join(", ")}${data.ridersUnmatched.length > 5 ? "…" : ""})`
+            : "";
+          toast({ title: "Results parsed", description: `Matched ${data.ridersMatched} rider(s).${unmatched}` });
+          setHtml("");
+          setComplementaryHtml("");
+        },
+        onError: (err) => {
+          toast({
+            title: "Parse failed",
+            description: err instanceof Error ? err.message : "Could not parse the pasted HTML.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="mt-4 border rounded-md p-4 space-y-3">
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">
+          Stage results page source (open the stage's PCS URL in your own browser, view source, paste here)
+        </Label>
+        <Textarea
+          placeholder="<html>...</html>"
+          className="font-mono text-xs h-32"
+          value={html}
+          onChange={(e) => setHtml(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">
+          Optional: /info/complementary-results page source (for the combative-rider award)
+        </Label>
+        <Textarea
+          placeholder="<html>...</html>"
+          className="font-mono text-xs h-24"
+          value={complementaryHtml}
+          onChange={(e) => setComplementaryHtml(e.target.value)}
+        />
+      </div>
+      <Button onClick={handleSubmit} disabled={scrapeFromHtml.isPending} size="sm">
+        Parse & Save Results
+      </Button>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { data: stages, isLoading: stagesLoading } = useAdminListStages({ query: { queryKey: getAdminListStagesQueryKey() }});
   const processStage = useAdminProcessStage();
@@ -403,18 +475,32 @@ export default function Admin() {
                   </div>
 
                   {!stage.resultsProcessed && (
-                    <Collapsible>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm" className="gap-2 self-start">
-                          <ClipboardEdit className="h-4 w-4" />
-                          Enter Results Manually
-                          <ChevronDown className="h-3 w-3" />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <ManualResultsEditor stageId={stage.id} />
-                      </CollapsibleContent>
-                    </Collapsible>
+                    <div className="flex flex-col gap-2">
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="gap-2 self-start">
+                            <ClipboardPaste className="h-4 w-4" />
+                            Paste Results from PCS
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <ScrapeFromHtmlEditor stageId={stage.id} />
+                        </CollapsibleContent>
+                      </Collapsible>
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="gap-2 self-start">
+                            <ClipboardEdit className="h-4 w-4" />
+                            Enter Results Manually
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <ManualResultsEditor stageId={stage.id} />
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
                   )}
                 </CardContent>
               </Card>

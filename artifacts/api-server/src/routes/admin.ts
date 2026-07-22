@@ -10,10 +10,12 @@ import {
   AdminPollStageParams,
   AdminUpdateStageResultsParams,
   AdminUpdateStageResultsBody,
+  AdminScrapeFromHtmlParams,
+  AdminScrapeFromHtmlBody,
 } from "@workspace/api-zod";
-import { processStage, ProcessStageError, upsertStageResultsForRiders } from "../lib/stageResults";
+import { processStage, ProcessStageError, upsertStageResultsForRiders, applyScrapedResults } from "../lib/stageResults";
 import { pollSingleStage, catchUpDueStages } from "../lib/scheduler";
-import { scrapeStartlist } from "../lib/pcsScraper";
+import { scrapeStartlist, parseStageResultsFromHtml, StageNotReadyError } from "../lib/pcsScraper";
 
 const router: IRouter = Router();
 
@@ -265,6 +267,54 @@ router.put("/admin/stages/:id/results", async (req, res): Promise<void> => {
 
   await upsertStageResultsForRiders(params.data.id, parsed.data);
   res.json({ success: true, count: parsed.data.length });
+});
+
+/**
+ * Parses stage results (and optionally the combative-rider award) from HTML
+ * pasted in directly, instead of fetching it server-side — the fallback for
+ * when PCS has blocked this server's own outbound requests outright (a real
+ * 403 from curl itself, not just Node's fetch, and not fixable by changing
+ * headers). An admin's own browser isn't on that block list, so they can
+ * open the page normally, copy its source, and paste it here. Same
+ * riders-matched/points-distribution pipeline as the live scraper — just
+ * doesn't process points itself, same as manual entry (call /process after).
+ */
+router.post("/admin/stages/:id/scrape-from-html", async (req, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = AdminScrapeFromHtmlParams.safeParse({ id: parseInt(rawId, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid stage ID" });
+    return;
+  }
+
+  const parsed = AdminScrapeFromHtmlBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  let scraped;
+  try {
+    scraped = parseStageResultsFromHtml(parsed.data.html, parsed.data.complementaryHtml);
+  } catch (err) {
+    if (err instanceof StageNotReadyError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Could not parse the pasted HTML",
+    });
+    return;
+  }
+
+  const summary = await applyScrapedResults(params.data.id, scraped);
+  res.json({
+    success: true,
+    ridersMatched: summary.ridersMatched,
+    ridersUnmatched: summary.ridersUnmatched,
+  });
 });
 
 /**

@@ -217,10 +217,12 @@ function parseJerseys($: cheerio.CheerioAPI): Partial<Record<JerseyKey, string>>
   return jerseys;
 }
 
-export async function scrapeStageResults(url: string): Promise<ScrapedStageResults> {
-  const html = await fetchHtml(url);
-  const $ = cheerio.load(html);
-
+// Parses everything on the main stage-results page (riders, jerseys, KOM,
+// sprint) — the part shared between fetching a live URL and parsing HTML
+// pasted in by hand (see parseStageResultsFromHtml below, added when PCS
+// started 403-ing Replit's own outbound IP entirely, blocking the curl path
+// regardless of User-Agent — a user's own browser isn't on that block list).
+function parseStageResultsDocument($: cheerio.CheerioAPI): Omit<ScrapedStageResults, "combativeRiderSlug"> {
   const stageTab = findActiveStageResTab($);
   if (!stageTab) {
     throw new Error("Could not locate the STAGE results tab — page structure may have changed");
@@ -264,9 +266,47 @@ export async function scrapeStageResults(url: string): Promise<ScrapedStageResul
   const komPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "7"));
   const sprintPointsBySlug = parseDeltaPntTable($, findResTabByStageType($, "5"));
   const jerseys = parseJerseys($);
-  const combativeRiderSlug = await scrapeCombativeRider(url);
 
-  return { riders, jerseys, komPointsBySlug, sprintPointsBySlug, combativeRiderSlug };
+  return { riders, jerseys, komPointsBySlug, sprintPointsBySlug };
+}
+
+// Parses the "Most combative rider" award from an already-fetched
+// complementary-results page's HTML — see scrapeCombativeRider below for
+// the page structure this expects.
+function parseCombativeRiderDocument($: cheerio.CheerioAPI): string | null {
+  const heading = $("h3")
+    .filter((_, el) => $(el).text().trim() === "Most combative rider")
+    .first();
+  if (!heading.length) return null;
+  const firstRow = heading.next("table.basic").find("tbody tr").first();
+  return extractSlug(firstRow.find("a[href^='rider/']").first().attr("href"));
+}
+
+export async function scrapeStageResults(url: string): Promise<ScrapedStageResults> {
+  const html = await fetchHtml(url);
+  const parsed = parseStageResultsDocument(cheerio.load(html));
+  const combativeRiderSlug = await scrapeCombativeRider(url);
+  return { ...parsed, combativeRiderSlug };
+}
+
+/**
+ * Same parsing as scrapeStageResults, but on HTML supplied directly instead
+ * of fetched server-side — for when PCS has blocked this server's outbound
+ * requests (curl gets a real 403 back, not just Node fetch's usual one) but
+ * an admin's own browser can still load the page fine and paste its source.
+ * complementaryHtml is the separate /info/complementary-results page's
+ * source, for the combative-rider award; omit it to just skip that field
+ * (null), same as scrapeCombativeRider already does when that page 404s.
+ */
+export function parseStageResultsFromHtml(
+  html: string,
+  complementaryHtml?: string | null,
+): ScrapedStageResults {
+  const parsed = parseStageResultsDocument(cheerio.load(html));
+  const combativeRiderSlug = complementaryHtml
+    ? parseCombativeRiderDocument(cheerio.load(complementaryHtml))
+    : null;
+  return { ...parsed, combativeRiderSlug };
 }
 
 /**
@@ -286,13 +326,7 @@ export async function scrapeCombativeRider(stagePcsUrl: string): Promise<string 
   } catch {
     return null;
   }
-  const $ = cheerio.load(html);
-  const heading = $("h3")
-    .filter((_, el) => $(el).text().trim() === "Most combative rider")
-    .first();
-  if (!heading.length) return null;
-  const firstRow = heading.next("table.basic").find("tbody tr").first();
-  return extractSlug(firstRow.find("a[href^='rider/']").first().attr("href"));
+  return parseCombativeRiderDocument(cheerio.load(html));
 }
 
 /**

@@ -510,6 +510,35 @@ paths:
         "403":
           description: Forbidden
 
+  /admin/stages/{id}/scrape-from-html:
+    post:
+      operationId: adminScrapeFromHtml
+      tags: [admin]
+      summary: Parse stage results from pasted PCS page HTML (bypasses server-side fetch)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminScrapeFromHtml"
+      responses:
+        "200":
+          description: Parse + apply result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScrapeFromHtmlResult"
+        "400":
+          description: Could not parse the pasted HTML
+        "403":
+          description: Forbidden
+
   /admin/stages/{id}:
     put:
       operationId: adminUpdateStage
@@ -1095,6 +1124,30 @@ components:
           type: integer
         message:
           type: string
+
+    AdminScrapeFromHtml:
+      type: object
+      required: [html]
+      properties:
+        html:
+          type: string
+          description: Full page source of the stage's PCS results page
+        complementaryHtml:
+          type: ["string", "null"]
+          description: Optional page source of the /info/complementary-results page, for the combative-rider award
+
+    ScrapeFromHtmlResult:
+      type: object
+      required: [success, ridersMatched, ridersUnmatched]
+      properties:
+        success:
+          type: boolean
+        ridersMatched:
+          type: integer
+        ridersUnmatched:
+          type: array
+          items:
+            type: string
 
     PollStageResult:
       type: object

@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdminScrapeFromHtml,
   AdminStage,
   AdminStageResultsSaved,
   AdminStageResultsUpdate,
@@ -45,6 +46,7 @@ import type {
   ProfileUpdate,
   Rider,
   RiderUpdate,
+  ScrapeFromHtmlResult,
   Stage,
   StageDetail,
   StagePointsDetail,
@@ -1914,6 +1916,75 @@ export const useAdminUpdateStageResults = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAdminUpdateStageResultsMutationOptions(options));
+    }
+
+export const getAdminScrapeFromHtmlUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/stages/${id}/scrape-from-html`
+}
+
+/**
+ * @summary Parse stage results from pasted PCS page HTML (bypasses server-side fetch)
+ */
+export const adminScrapeFromHtml = async (id: number,
+    adminScrapeFromHtml: AdminScrapeFromHtml, options?: RequestInit): Promise<ScrapeFromHtmlResult> => {
+
+  return customFetch<ScrapeFromHtmlResult>(getAdminScrapeFromHtmlUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(adminScrapeFromHtml)
+  }
+);}
+
+
+
+
+export const getAdminScrapeFromHtmlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminScrapeFromHtml>>, TError,{id: number;data: BodyType<AdminScrapeFromHtml>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminScrapeFromHtml>>, TError,{id: number;data: BodyType<AdminScrapeFromHtml>}, TContext> => {
+
+const mutationKey = ['adminScrapeFromHtml'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminScrapeFromHtml>>, {id: number;data: BodyType<AdminScrapeFromHtml>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminScrapeFromHtml(id,data,requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminScrapeFromHtmlMutationResult = NonNullable<Awaited<ReturnType<typeof adminScrapeFromHtml>>>
+    export type AdminScrapeFromHtmlMutationBody = BodyType<AdminScrapeFromHtml>
+    export type AdminScrapeFromHtmlMutationError = ErrorType<void>
+
+    /**
+ * @summary Parse stage results from pasted PCS page HTML (bypasses server-side fetch)
+ */
+export const useAdminScrapeFromHtml = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminScrapeFromHtml>>, TError,{id: number;data: BodyType<AdminScrapeFromHtml>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminScrapeFromHtml>>,
+        TError,
+        {id: number;data: BodyType<AdminScrapeFromHtml>},
+        TContext
+      > => {
+      return useMutation(getAdminScrapeFromHtmlMutationOptions(options));
     }
 
 export const getAdminUpdateStageUrl = (id: number,) => {
