@@ -518,8 +518,8 @@ export const AdminScrapeFromHtmlParams = zod.object({
 })
 
 export const AdminScrapeFromHtmlBody = zod.object({
-  "html": zod.string(),
-  "complementaryHtml": zod.string().nullish()
+  "html": zod.string().describe('Full page source of the stage\'s PCS results page'),
+  "complementaryHtml": zod.string().nullish().describe('Optional page source of the \/info\/complementary-results page, for the combative-rider award')
 })
 
 export const AdminScrapeFromHtmlResponse = zod.object({

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adminScrapeFromHtml';
 export * from './adminStage';
 export * from './adminStageResultEntry';
 export * from './adminStageResultsSaved';
@@ -40,6 +41,7 @@ export * from './rider';
 export * from './riderCurrentJerseysItem';
 export * from './riderSummary';
 export * from './riderUpdate';
+export * from './scrapeFromHtmlResult';
 export * from './stage';
 export * from './stageDetail';
 export * from './stagePointsDetail';

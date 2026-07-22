@@ -1944,6 +1944,7 @@ export const adminScrapeFromHtml = async (id: number,
 
 
 
+
 export const getAdminScrapeFromHtmlMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminScrapeFromHtml>>, TError,{id: number;data: BodyType<AdminScrapeFromHtml>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof adminScrapeFromHtml>>, TError,{id: number;data: BodyType<AdminScrapeFromHtml>}, TContext> => {
@@ -1963,6 +1964,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
           return  adminScrapeFromHtml(id,data,requestOptions)
         }
+
+
 
 
 
