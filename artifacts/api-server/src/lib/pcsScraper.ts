@@ -32,6 +32,16 @@
  * across the stages checked, so it's not scraped — it stays a manual toggle
  * in the admin results-entry UI.
  *
+ * - Team time trials render the STAGE tab as `.general ul.list.ttt-results`
+ *   instead of the usual `table.results` (confirmed against the real 2026
+ *   Tour's stage 1 TTT). Each `<li>` is one team: a rank in `.w10.fs14` and
+ *   a nested `<table>` of that team's riders. All riders on a team share the
+ *   team's rank as their stage position — there's no per-rider place across
+ *   the whole field in a TTT. Riders who lose contact do show a per-rider
+ *   time gap inside the team's table, but no real DNF/DNS example turned up
+ *   in this format to verify against, so — like the standard-table path —
+ *   only riders actually listed are captured.
+ *
  * Fetching note: PCS's edge (Cloudflare-style bot detection) returns 403 to
  * requests made with Node's built-in `fetch`/undici even with a full set of
  * browser-like headers and a legit UA string — this was verified empirically
@@ -157,6 +167,34 @@ function parseDeltaPntTable(
   return result;
 }
 
+// Team time trials list results as one <li> per team (rank + a nested table
+// of that team's riders) rather than the usual one-row-per-rider table. Every
+// rider on a team is credited with the team's rank as their stage position.
+function parseTttResults(
+  $: cheerio.CheerioAPI,
+  resTab: ReturnType<cheerio.CheerioAPI>,
+): ScrapedRiderResult[] {
+  const riders: ScrapedRiderResult[] = [];
+  const teamItems = resTab.find(".general ul.list.ttt-results > li").toArray();
+  for (const li of teamItems) {
+    const $li = $(li);
+    const rankText = $li.find(".w10.fs14").first().text().trim();
+    if (!/^\d+$/.test(rankText)) continue; // header row, not a team row
+    const rank = parseInt(rankText, 10);
+    $li.find("table tr").each((_, tr) => {
+      const riderLink = $(tr).find("a[href^='rider/']").first();
+      const slug = extractSlug(riderLink.attr("href"));
+      if (!slug) return;
+      riders.push({ pcsSlug: slug, name: riderLink.text().trim(), position: rank, dnf: false });
+    });
+  }
+  return riders;
+}
+
+function isTttResultsTab(resTab: ReturnType<cheerio.CheerioAPI>): boolean {
+  return resTab.find(".general ul.list.ttt-results").length > 0;
+}
+
 function parseJerseys($: cheerio.CheerioAPI): Partial<Record<JerseyKey, string>> {
   const jerseys: Partial<Record<JerseyKey, string>> = {};
   const heading = $("h4")
@@ -182,28 +220,33 @@ export async function scrapeStageResults(url: string): Promise<ScrapedStageResul
     throw new Error("Could not locate the STAGE results tab — page structure may have changed");
   }
 
-  const { headerMap, rows } = parseGeneralTable($, stageTab);
-  const rnkIdx = headerMap.get("rnk");
-  const riderNameIdx = headerMap.get("ridername");
-  if (rnkIdx === undefined || riderNameIdx === undefined) {
-    throw new Error("Unexpected results table structure (missing rnk/ridername columns)");
-  }
+  let riders: ScrapedRiderResult[];
+  if (isTttResultsTab(stageTab)) {
+    riders = parseTttResults($, stageTab);
+  } else {
+    const { headerMap, rows } = parseGeneralTable($, stageTab);
+    const rnkIdx = headerMap.get("rnk");
+    const riderNameIdx = headerMap.get("ridername");
+    if (rnkIdx === undefined || riderNameIdx === undefined) {
+      throw new Error("Unexpected results table structure (missing rnk/ridername columns)");
+    }
 
-  const riders: ScrapedRiderResult[] = [];
-  for (const row of rows) {
-    const cells = row.find("> td");
-    const rnkText = $(cells.get(rnkIdx)).text().trim();
-    const rideCell = $(cells.get(riderNameIdx));
-    const riderLink = rideCell.find("a[href^='rider/']").first();
-    const slug = extractSlug(riderLink.attr("href"));
-    if (!slug) continue;
-    const position = /^\d+$/.test(rnkText) ? parseInt(rnkText, 10) : null;
-    riders.push({
-      pcsSlug: slug,
-      name: riderLink.text().trim(),
-      position,
-      dnf: position === null,
-    });
+    riders = [];
+    for (const row of rows) {
+      const cells = row.find("> td");
+      const rnkText = $(cells.get(rnkIdx)).text().trim();
+      const rideCell = $(cells.get(riderNameIdx));
+      const riderLink = rideCell.find("a[href^='rider/']").first();
+      const slug = extractSlug(riderLink.attr("href"));
+      if (!slug) continue;
+      const position = /^\d+$/.test(rnkText) ? parseInt(rnkText, 10) : null;
+      riders.push({
+        pcsSlug: slug,
+        name: riderLink.text().trim(),
+        position,
+        dnf: position === null,
+      });
+    }
   }
 
   if (riders.length < MIN_FINISHER_ROWS) {
