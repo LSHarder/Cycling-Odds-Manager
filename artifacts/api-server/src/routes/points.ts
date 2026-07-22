@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, desc } from "drizzle-orm";
-import { db, userStagePointsTable, stagesTable, usersTable } from "@workspace/db";
+import { db, userStagePointsTable, stagesTable, usersTable, ridersTable } from "@workspace/db";
 import { GetStagePointsParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -81,26 +81,27 @@ router.get("/points/stage/:stageId", async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db
-    .select()
+  const rawRows = await db
+    .select({ points: userStagePointsTable, rider: ridersTable })
     .from(userStagePointsTable)
+    .innerJoin(ridersTable, eq(userStagePointsTable.riderId, ridersTable.id))
     .where(
       sql`${userStagePointsTable.userId} = ${req.user.id} AND ${userStagePointsTable.stageId} = ${params.data.stageId}`
     );
 
-  const totalPoints = rows.reduce(
-    (sum, r) => sum + parseFloat(String(r.totalPoints)),
+  const totalPoints = rawRows.reduce(
+    (sum, { points: r }) => sum + parseFloat(String(r.totalPoints)),
     0
   );
 
-  const riderPoints = rows.map((r) => {
+  const riderPoints = rawRows.map(({ points: r, rider }) => {
     const breakdown = (r.breakdown as any) ?? {};
     return {
       stageId: r.stageId,
       stageNumber: stage.stageNumber,
       stageName: stage.name,
       riderId: r.riderId,
-      riderName: "",
+      riderName: rider.name,
       isCaptain: r.isCaptain,
       oddsDecimal: parseFloat(r.oddsDecimal as string),
       basePoints: parseFloat(r.basePoints as string),
