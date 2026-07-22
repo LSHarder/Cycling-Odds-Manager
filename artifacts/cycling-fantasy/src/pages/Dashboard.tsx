@@ -162,8 +162,8 @@ export default function Dashboard() {
                     <div className="font-bold">Stage {stage.stageNumber}</div>
                     <div className="text-xs text-muted-foreground">{stage.stageName}</div>
                   </div>
-                  <div className="font-mono font-bold text-lg text-primary">
-                    +{stage.points.toLocaleString()} <span className="text-xs font-sans text-muted-foreground">pts</span>
+                  <div className={`font-mono font-bold text-lg ${stage.points < 0 ? "text-destructive" : "text-primary"}`}>
+                    {stage.points >= 0 ? "+" : ""}{stage.points.toLocaleString()} <span className="text-xs font-sans text-muted-foreground">pts</span>
                   </div>
                 </div>
               ))}
