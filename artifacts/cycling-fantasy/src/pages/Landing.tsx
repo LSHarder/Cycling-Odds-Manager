@@ -81,8 +81,8 @@ export default function Landing() {
             </div>
             <h3 className="text-2xl font-heading font-bold">Live Stages</h3>
             <p className="text-muted-foreground">
-              Real-time point processing. As the peloton crosses the finish line, your
-              team's score updates instantly. Don't miss the transfer deadline!
+              Points are calculated as soon as each stage's results are in, so check back
+              after the finish line for your updated score. Don't miss the transfer deadline!
             </p>
           </div>
 

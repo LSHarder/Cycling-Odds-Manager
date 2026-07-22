@@ -16,7 +16,7 @@ export default function Stages() {
     <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8">
       <header>
         <h1 className="text-4xl font-heading font-bold uppercase tracking-tight">The Route</h1>
-        <p className="text-muted-foreground mt-1">Stages 14-21 • The Final Week</p>
+        <p className="text-muted-foreground mt-1">The Full Route • 21 Stages to Glory</p>
       </header>
 
       <div className="grid gap-4">
