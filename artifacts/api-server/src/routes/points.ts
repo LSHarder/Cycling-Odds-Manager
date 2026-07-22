@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, inArray, sql, desc } from "drizzle-orm";
 import { db, userStagePointsTable, stagesTable, usersTable, ridersTable } from "@workspace/db";
 import { GetStagePointsParams } from "@workspace/api-zod";
 
@@ -23,10 +23,7 @@ router.get("/points/me", async (req, res): Promise<void> => {
   const stageIds = pointRows.map((r) => r.stageId);
   const stages =
     stageIds.length > 0
-      ? await db
-          .select()
-          .from(stagesTable)
-          .where(sql`${stagesTable.id} = ANY(${stageIds})`)
+      ? await db.select().from(stagesTable).where(inArray(stagesTable.id, stageIds))
       : [];
 
   const stageMap = new Map(stages.map((s) => [s.id, s]));
